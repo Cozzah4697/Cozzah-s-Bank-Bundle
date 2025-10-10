@@ -1,0 +1,716 @@
+@name Bank Default UI
+@persist [Elements]:table
+@inputs EGP:wirelink User:entity
+
+#include "CozzahsBankBundle/includes/functions"
+#include "CozzahsBankBundle/includes/membership_configuration"
+
+if (first()) {    
+    # Initialize variables
+    Elements = table()
+}
+
+function number table:get(...Args:array) {
+    const Name = Args[1, string]
+    if (Name) {
+        if (This:exists(Name)) {
+            return This[Name, number]   
+        }
+        const FreeID = This:flip():ncount()+1
+        This[Name, number] = FreeID
+        return FreeID
+    }
+    const FreeID = This:flip():ncount()+1
+    This[toString(FreeID), number] = FreeID
+    return FreeID
+}
+
+function void wirelink:clear() {
+    This:egpClear()
+    Elements:clear()
+}
+
+
+function egpobject text(ID:number, ARGS:table) {
+    return EGP:egpTextLayout(ID, ARGS)
+}
+
+function egpobject circle(ID:number, ARGS:table) {
+    if (ARGS["outline", number]) {
+        return EGP:egpCircleOutline(ID, ARGS)
+    }
+    return EGP:egpCircle(ID, ARGS)
+}
+
+function egpobject box(ID:number, ARGS:table) {
+    if (ARGS["outline", number]) {
+        return EGP:egpRoundedBoxOutline(ID, ARGS)
+    }
+    return EGP:egpRoundedBox(ID, ARGS)
+}
+
+function egpobject line(ID:number, ARGS:table) {
+    return EGP:egpBox(ID, ARGS)
+}
+
+function void removeOffscreenObjects(Elements:table, EGP:wirelink) {
+    # Get the screen dimensions (using standard EGP dimensions)
+    const ScreenWidth = 512
+    const ScreenHeight = 512
+    const Buffer = 300 # Extra buffer distance to ensure objects are well off-screen
+    
+    # Loop through all elements in the Elements table
+    foreach(Name:string, ID:number = Elements) {
+        if (ID) { # Make sure the element exists
+            const Pos = EGP:egpPos(ID)
+            const Size = EGP:egpSize(ID)
+            
+            # Check if element is completely off screen (with buffer)
+            if (Pos:x() < -Size:x() - Buffer || 
+                Pos:x() > ScreenWidth + Buffer || 
+                Pos:y() < -Size:y() - Buffer || 
+                Pos:y() > ScreenHeight + Buffer) {
+                
+                # Element is off-screen, remove it
+                EGP:egpRemove(ID)
+                Elements:remove(Name) # Also remove from Elements table
+            }
+        }
+    }
+} 
+
+function string cursorObj(Names:array) {
+    const Cursor = EGP:egpCursor(User)
+    # Iterate through objects
+    for (I = 1, Names:count()) {
+        const ID = Elements:get(Names[I, string])
+        const Object = EGP:egpobject(ID)
+        if (Object:containsPoint(Cursor)) {
+            return Names[I, string]
+        }
+    }
+
+    return ""
+}
+
+function number userInput(Player:entity) { # Check for specific player input
+    return ~User && Player:isValid()
+}  
+
+function void bankHomeScreen(Elements:table, EGP:wirelink, Theme:string, NextScreen:function) {
+    EGP:clear()
+    EGP:egpDrawTopLeft(1)
+    
+    # First draw the main screen (so it appears behind)
+    NextScreen()
+    
+     #Background Section
+    box(Elements:get("Rectangle44"), table("x"=0.0, "y"=0.0, "w"=512.0, "h"=256.0, "r"=89, "g"=89, "b"=89, "radius"=0))
+    box(Elements:get("Rectangle45"), table("x"=0.0, "y"=256.0, "w"=512.0, "h"=256.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+    text(Elements:get("MADEWITHODIN"), table("text"="MADE WITH ODIN AND BOB TOMATOS FIGMA TO E2 EGP COMPILER", "x"=134.0, "y"=462.0, "w"= 243.0, "h"=44.0, "r"=255, "g"=255, "b"=255, "size"=15, "halign"=1, "valign"=1))
+    
+    if(Theme == "ASB") {
+        #ASB Title Section
+        box(Elements:get("Rectangle43"), table("x"=129.0, "y"=15.0, "w"=259.0, "h"=78.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+        circle(Elements:get("Ellipse8"), table("x"=387.0, "y"=93.0, "w"=15.0, "h"=15.0, "r"=89, "g"=89, "b"=89))
+        circle(Elements:get("Ellipse9"), table("x"=388.0, "y"=15.0, "w"=15.0, "h"=15.0, "r"=89, "g"=89, "b"=89))
+        circle(Elements:get("Ellipse10"), table("x"=130.0, "y"=93.0, "w"=15.0, "h"=15.0, "r"=89, "g"=89, "b"=89))
+        circle(Elements:get("Ellipse11"), table("x"=130.0, "y"=15.0, "w"=15.0, "h"=15.0, "r"=89, "g"=89, "b"=89))
+        text(Elements:get("ASBBANK"), table("text"="ASB BANK", "x"=129.0, "y"=15.0, "w"= 259.0, "h"=79.0, "r"=255, "g"=196, "b"=0, "size"=43, "halign"=1, "valign"=1))
+        box(Elements:get("Rectangle113"), table("x"=158.0, "y"=39.0, "w"=7.0, "h"=16.0, "r"=255, "g"=195, "b"=0, "radius"=2.0))
+        box(Elements:get("Rectangle114"), table("x"=164.58, "y"=38.04, "w"=6.62, "h"=19.44, "r"=42, "g"=42, "b"=42, "radius"=0))
+        EGP:egpAngle(Elements:get("Rectangle114"), vec2(164.58, 38.04), vec2(0, 0), -20.0)
+    }
+    else {
+        #Title Section
+        box(Elements:get("Rectangle43"), table("x"=126.0, "y"=16.0, "w"=259.0, "h"=78.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+        text(Elements:get("COZZAHSBANK"), table("text"=BankName, "x"=127.0, "y"=16.0, "w"= 258.0, "h"=79.0, "r"=255, "g"=255, "b"=255, "size"=35, "halign"=1, "valign"=1))
+        circle(Elements:get("Ellipse8"), table("x"=384.0, "y"=94.0, "w"=15.0, "h"=15.0, "r"=89, "g"=89, "b"=89))
+        circle(Elements:get("Ellipse9"), table("x"=385.0, "y"=16.0, "w"=15.0, "h"=15.0, "r"=89, "g"=89, "b"=89))
+        circle(Elements:get("Ellipse10"), table("x"=127.0, "y"=94.0, "w"=15.0, "h"=15.0, "r"=89, "g"=89, "b"=89))
+        circle(Elements:get("Ellipse11"), table("x"=127.0, "y"=16.0, "w"=15.0, "h"=15.0, "r"=89, "g"=89, "b"=89))
+    }
+    
+#[    #CommbankICO Section
+    box(Elements:get("Rectangle367"), table("x"=27.77, "y"=49.0, "w"=53.42, "h"=53.42, "r"=255, "g"=204, "b"=0, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle367"), vec2(27.77, 49.0), vec2(0, 0), 45.0)
+    box(Elements:get("Rectangle368"), table("x"=84.51, "y"=55.52, "w"=19.0, "h"=14.08, "r"=0, "g"=0, "b"=2, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle368"), vec2(79.51, 53.52), vec2(0, 0), 45.0)
+    box(Elements:get("Rectangle369"), table("x"=64.0, "y"=90.0, "w"=39.04, "h"=13.33, "r"=0, "g"=0, "b"=2, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle369"), vec2(63.0, 88.0), vec2(0, 0), 65.0)
+    box(Elements:get("Rectangle370"), table("x"=55.0, "y"=110.0, "w"=2.98, "h"=14.94, "r"=89, "g"=89, "b"=89, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle370"), vec2(55.0, 80.0), vec2(0, 0), 45.0)
+    box(Elements:get("Rectangle371"), table("x"=103.82, "y"=48, "w"=13.18, "h"=57.82, "r"=89, "g"=89, "b"=89, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle371"), vec2(103.82, 48), vec2(0, 0), -45.0)]#
+    
+    #Handle Section
+    circle(Elements:get("Ellipse23"), table("x"=256.0, "y"=256.0, "w"=150.0, "h"=150.0, "r"=217, "g"=217, "b"=217))
+    circle(Elements:get("Ellipse24"), table("x"=256.0, "y"=256.0, "w"=140.0, "h"=140.0, "r"=42, "g"=42, "b"=42))
+    box(Elements:get("Rectangle56"), table("x"=146.0, "y"=351.06, "w"=290.0, "h"=20.0, "r"=217, "g"=217, "b"=217, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle56"), vec2(146.0, 351.06), vec2(0, 0), 45.0)
+    box(Elements:get("Rectangle57"), table("x"=160.14, "y"=146.0, "w"=290.0, "h"=20.0, "r"=217, "g"=217, "b"=217, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle57"), vec2(160.14, 146.0), vec2(0, 0), -45.0)
+    circle(Elements:get("Ellipse25"), table("x"=158.5, "y"=158.5, "w"=22.5, "h"=22.5, "r"=157, "g"=156, "b"=156))
+    circle(Elements:get("Ellipse26"), table("x"=158.5, "y"=352.5, "w"=22.5, "h"=22.5, "r"=157, "g"=156, "b"=156))
+    circle(Elements:get("Ellipse27"), table("x"=354.5, "y"=352.5, "w"=22.5, "h"=22.5, "r"=157, "g"=156, "b"=156))
+    circle(Elements:get("Ellipse22"), table("x"=256.0, "y"=257.0, "w"=40.0, "h"=40.0, "r"=157, "g"=156, "b"=156))
+    circle(Elements:get("1" + "Ellipse25"), table("x"=354.5, "y"=158.5, "w"=22.5, "h"=22.5, "r"=157, "g"=156, "b"=156))
+    text(Elements:get("START"), table("text"="START", "x"=216.0, "y"=217.0, "w"= 80.0, "h"=80.0, "r"=255, "g"=255, "b"=255, "size"=27, "halign"=1, "valign"=1))
+    
+    # Parent the elements to Ellipse22 and adjust positions
+    EGP:egpParent(Elements:get("Ellipse23"), Elements:get("Ellipse22"))
+    EGP:egpPos(Elements:get("Ellipse23"), vec2(0.0, -1.0)) # 256.0-256.0, 256.0-257.0
+    
+    EGP:egpParent(Elements:get("Ellipse24"), Elements:get("Ellipse22"))
+    EGP:egpPos(Elements:get("Ellipse24"), vec2(0.0, -1.0)) # 256.0-256.0, 256.0-257.0
+    
+    EGP:egpParent(Elements:get("Rectangle56"), Elements:get("Ellipse22"))
+    EGP:egpPos(Elements:get("Rectangle56"), vec2(-110.0, 94.06)) # 146.0-256.0, 351.06-257.0
+    
+    EGP:egpParent(Elements:get("Rectangle57"), Elements:get("Ellipse22"))
+    EGP:egpPos(Elements:get("Rectangle57"), vec2(-95.86, -111.0)) # 160.14-256.0, 146.0-257.0
+    
+    EGP:egpParent(Elements:get("Ellipse25"), Elements:get("Ellipse22"))
+    EGP:egpPos(Elements:get("Ellipse25"), vec2(-97.5, -98.5)) # 158.5-256.0, 158.5-257.0
+    
+    EGP:egpParent(Elements:get("Ellipse26"), Elements:get("Ellipse22"))
+    EGP:egpPos(Elements:get("Ellipse26"), vec2(-97.5, 95.5)) # 158.5-256.0, 352.5-257.0
+    
+    EGP:egpParent(Elements:get("Ellipse27"), Elements:get("Ellipse22"))
+    EGP:egpPos(Elements:get("Ellipse27"), vec2(98.5, 95.5)) # 354.5-256.0, 352.5-257.0
+    
+    EGP:egpParent(Elements:get("1" + "Ellipse25"), Elements:get("Ellipse22"))
+    EGP:egpPos(Elements:get("1" + "Ellipse25"), vec2(98.5, -98.5)) # 354.5-256.0, 158.5-257.0
+}
+
+function void depoMain(Elements:table, EGP:wirelink) {
+    EGP:egpDrawTopLeft(1)
+
+    #Background Section
+    box(Elements:get("Rectangle1"), table("x"=-256.0, "y"=256.0, "w"=724.08, "h"=365.57, "r"=89, "g"=89, "b"=89, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle1"), vec2(-256.0, 256.0), vec2(0, 0), 45.0)
+    box(Elements:get("Rectangle2"), table("x"=768.0, "y"=256.0, "w"=362.04, "h"=724.08, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle2"), vec2(768.0, 256.0), vec2(0, -724.08), 135)
+    box(Elements:get("Rectangle6"), table("x"=214.0, "y"=256.43, "w"=60.0, "h"=60.0, "r"=89, "g"=89, "b"=89, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle6"), vec2(214.0, 256.43), vec2(0, 0), 45.0)
+    box(Elements:get("Rectangle7"), table("x"=299.0, "y"=171.43, "w"=60.0, "h"=60.0, "r"=89, "g"=89, "b"=89, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle7"), vec2(299.0, 171.43), vec2(0, 0), 45.0)
+    box(Elements:get("Rectangle8"), table("x"=384.0, "y"=86.43, "w"=60.0, "h"=60.0, "r"=89, "g"=89, "b"=89, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle8"), vec2(384.0, 86.43), vec2(0, 0), 45.0)
+    box(Elements:get("Rectangle9"), table("x"=129.0, "y"=341.43, "w"=60.0, "h"=60.0, "r"=89, "g"=89, "b"=89, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle9"), vec2(129.0, 341.43), vec2(0, 0), 45.0)
+    box(Elements:get("Rectangle10"), table("x"=44.0, "y"=426.43, "w"=60.0, "h"=60.0, "r"=89, "g"=89, "b"=89, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle10"), vec2(44.0, 426.43), vec2(0, 0), 45.0)
+    box(Elements:get("Rectangle11"), table("x"=-42.0, "y"=511.43, "w"=60.0, "h"=60.0, "r"=89, "g"=89, "b"=89, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle11"), vec2(-42.0, 511.43), vec2(0, 0), 45.0)
+    box(Elements:get("1" + "Rectangle10"), table("x"=469.0, "y"=1.43, "w"=60.0, "h"=60.0, "r"=89, "g"=89, "b"=89, "radius"=0))
+    EGP:egpAngle(Elements:get("1" + "Rectangle10"), vec2(469.0, 1.43), vec2(0, 0), 45.0)
+
+    # PrinterRack Section
+    box(Elements:get("Rectangle23"), table("x"=313.0, "y"=276.0, "w"=183.0, "h"=1.0, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle41"), table("x"=313.0, "y"=494.0, "w"=183.0, "h"=5.0, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle24"), table("x"=495.0, "y"=276.0, "w"=1.0, "h"=218.0, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle25"), table("x"=313.0, "y"=276.0, "w"=1.0, "h"=218.0, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle13"), table("x"=323.0, "y"=461.29, "w"=74.28, "h"=29.71, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle14"), table("x"=412.87, "y"=461.29, "w"=74.28, "h"=29.71, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle17"), table("x"=412.87, "y"=366.22, "w"=74.28, "h"=44.57, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle18"), table("x"=323.0, "y"=366.22, "w"=74.28, "h"=44.57, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("1" + "Rectangle23"), table("x"=324.0, "y"=367.0, "w"=72.28, "h"=42.57, "r"=42, "g"=42, "b"=42, "radius"=0))
+    box(Elements:get("1" + "Rectangle24"), table("x"=414.0, "y"=367.0, "w"=72.28, "h"=42.57, "r"=42, "g"=42, "b"=42, "radius"=0))
+    box(Elements:get("Rectangle15"), table("x"=412.87, "y"=421.18, "w"=74.28, "h"=29.71, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle19"), table("x"=412.87, "y"=326.11, "w"=74.28, "h"=29.71, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle20"), table("x"=323.0, "y"=326.11, "w"=74.28, "h"=29.71, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle21"), table("x"=412.87, "y"=286.0, "w"=74.28, "h"=29.71, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle22"), table("x"=323.0, "y"=286.0, "w"=74.28, "h"=29.71, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle16"), table("x"=323.0, "y"=421.18, "w"=74.28, "h"=29.71, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle26"), table("x"=336.0, "y"=383.0, "w"=4.0, "h"=16.0, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle27"), table("x"=331.0, "y"=379.0, "w"=15.0, "h"=4.0, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle28"), table("x"=359.12, "y"=378.35, "w"=4.0, "h"=22.44, "r"=217, "g"=217, "b"=217, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle28"), vec2(359.12, 378.35), vec2(0, 0), 5.0)
+    box(Elements:get("Rectangle29"), table("x"=359.0, "y"=378.41, "w"=4.0, "h"=24.41, "r"=217, "g"=217, "b"=217, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle29"), vec2(359.0, 378.41), vec2(0, 0), -35.0)
+    box(Elements:get("Rectangle31"), table("x"=353.12, "y"=389.0, "w"=9.0, "h"=4.0, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle32"), table("x"=369.0, "y"=379.0, "w"=4.0, "h"=15.0, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle34"), table("x"=373.0, "y"=394.0, "w"=8.0, "h"=4.0, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle33"), table("x"=381.0, "y"=379.0, "w"=4.0, "h"=15.0, "r"=217, "g"=217, "b"=217, "radius"=0))
+    circle(Elements:get("Ellipse1"), table("x"=373.0, "y"=394.0, "w"=4.0, "h"=4.0, "r"=217, "g"=217, "b"=217))
+    circle(Elements:get("Ellipse2"), table("x"=381.0, "y"=394.0, "w"=4.0, "h"=4.0, "r"=217, "g"=217, "b"=217))
+    box(Elements:get("Rectangle35"), table("x"=373.0, "y"=379.0, "w"=8.0, "h"=15.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+    box(Elements:get("Rectangle38"), table("x"=424.0, "y"=378.0, "w"=52.0, "h"=22.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+    box(Elements:get("Rectangle37"), table("x"=437.0, "y"=370.0, "w"=25.0, "h"=36.0, "r"=217, "g"=217, "b"=217, "radius"=0))
+    line(Elements:get("Line5"), table("x"=439.0, "y"=402.0, "w"=15.0, "h"=1.0, "r"=42, "g"=42, "b"=42))
+    box(Elements:get("Rectangle36"), table("x"=425.0, "y"=379.0, "w"=50.0, "h"=20.0, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle39"), table("x"=426.0, "y"=380.0, "w"=48.0, "h"=18.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+    circle(Elements:get("Ellipse3"), table("x"=469.0, "y"=385.0, "w"=2.0, "h"=2.0, "r"=217, "g"=217, "b"=217))
+    box(Elements:get("Rectangle40"), table("x"=437.0, "y"=394.0, "w"=25.0, "h"=4.0, "r"=217, "g"=217, "b"=217, "radius"=0))
+    line(Elements:get("Line7"), table("x"=438.0, "y"=399.0, "w"=20.0, "h"=1.0, "r"=42, "g"=42, "b"=42))
+    box(Elements:get("Rectangle30"), table("x"=327.5, "y"=398.5, "w"=64.0, "h"=9.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+    box(Elements:get("Rectangle42"), table("x"=329.0, "y"=370.0, "w"=64.0, "h"=9.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+    text(Elements:get("$"), table("text"="$", "x"=354.0, "y"=329.0, "w"= 12.0, "h"=23.0, "r"=30, "g"=178, "b"=0, "size"=23, "halign"=1, "valign"=1))
+    text(Elements:get("1" + "$"), table("text"="$", "x"=444.0, "y"=329.0, "w"= 12.0, "h"=23.0, "r"=30, "g"=178, "b"=0, "size"=23, "halign"=1, "valign"=1))
+    text(Elements:get("2" + "$"), table("text"="$", "x"=354.0, "y"=289.0, "w"= 12.0, "h"=23.0, "r"=30, "g"=178, "b"=0, "size"=23, "halign"=1, "valign"=1))
+    text(Elements:get("3" + "$"), table("text"="$", "x"=444.0, "y"=289.0, "w"= 12.0, "h"=23.0, "r"=30, "g"=178, "b"=0, "size"=23, "halign"=1, "valign"=1))
+    text(Elements:get("4" + "$"), table("text"="$", "x"=354.0, "y"=424.0, "w"= 12.0, "h"=23.0, "r"=30, "g"=178, "b"=0, "size"=23, "halign"=1, "valign"=1))
+    text(Elements:get("5" + "$"), table("text"="$", "x"=354.0, "y"=466.0, "w"= 12.0, "h"=23.0, "r"=30, "g"=178, "b"=0, "size"=23, "halign"=1, "valign"=1))
+    text(Elements:get("6" + "$"), table("text"="$", "x"=444.0, "y"=424.0, "w"= 12.0, "h"=23.0, "r"=30, "g"=178, "b"=0, "size"=23, "halign"=1, "valign"=1))
+    text(Elements:get("7" + "$"), table("text"="$", "x"=444.0, "y"=466.0, "w"= 12.0, "h"=23.0, "r"=30, "g"=178, "b"=0, "size"=23, "halign"=1, "valign"=1))
+
+    #Button Section
+    box(Elements:get("ButtonDepo"), table("x"=158.0, "y"=164.0, "w"=196.0, "h"=50.0, "r"=217, "g"=217, "b"=217, "radius"=25.0))
+    text(Elements:get("DEPOSIT"), table("text"="DEPOSIT", "x"=171.0, "y"=164.0, "w"= 173.0, "h"=50.0, "r"=0, "g"=0, "b"=0, "size"=35, "halign"=1, "valign"=1))
+}
+
+function void depoActive(Elements:table, EGP:wirelink, Theme:string) {
+    EGP:clear()
+
+    box(Elements:get("Background"), table("x"=0, "y"=0, "w"=512.0, "h"=512.0, "r"=255, "g"=255, "b"=255, "radius"=0))
+    box(Elements:get("Rectangle2"), table("x"=0.0, "y"=512.0, "w"=512.0, "h"=512.0, "r"=89, "g"=89, "b"=89, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle2"), vec2(0.0, 512.0), vec2(0, -512.0), 0)
+    text(Elements:get("DEPOSITYOURPR"), table("text"="DEPOSIT YOUR PRINTERS AND RACK HERE", "x"=115.0, "y"=107.0, "w"= 282.0, "h"=79.0, "r"=255, "g"=255, "b"=255, "size"=23, "halign"=1, "valign"=1))
+
+    #Arrow Section
+    box(Elements:get("Rectangle55"), table("x"=211.0, "y"=307.07, "w"=150.0, "h"=150.0, "r"=223, "g"=171, "b"=0, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle55"), vec2(211.0, 307.07), vec2(0, 0), 45.0)
+    box(Elements:get("Rectangle46"), table("x"=203.0, "y"=201.0, "w"=114.0, "h"=212.0, "r"=89, "g"=89, "b"=89, "radius"=0))
+    box(Elements:get("Rectangle44"), table("x"=56.0, "y"=277.0, "w"=277.0, "h"=60.0, "r"=223, "g"=171, "b"=0, "radius"=0))
+    
+    EGP:egpParent(Elements:get("Rectangle55"), Elements:get("Rectangle44"))
+    EGP:egpPos(Elements:get("Rectangle55"), vec2(155.0, 30.07)) # 211.0-56.0, 307.07-277.0
+    
+    EGP:egpParent(Elements:get("Rectangle46"), Elements:get("Rectangle44"))
+    EGP:egpPos(Elements:get("Rectangle46"), vec2(147.0, -76.0)) # 203.0-56.0, 201.0-277.0
+    
+    if(Theme == "ASB") {
+        #ASB Title Section
+        box(Elements:get("Rectangle43"), table("x"=129.0, "y"=15.0, "w"=259.0, "h"=78.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+        circle(Elements:get("Ellipse8"), table("x"=387.0, "y"=93.0, "w"=15.0, "h"=15.0, "r"=89, "g"=89, "b"=89))
+        circle(Elements:get("Ellipse9"), table("x"=388.0, "y"=15.0, "w"=15.0, "h"=15.0, "r"=89, "g"=89, "b"=89))
+        circle(Elements:get("Ellipse10"), table("x"=130.0, "y"=93.0, "w"=15.0, "h"=15.0, "r"=89, "g"=89, "b"=89))
+        circle(Elements:get("Ellipse11"), table("x"=130.0, "y"=15.0, "w"=15.0, "h"=15.0, "r"=89, "g"=89, "b"=89))
+        text(Elements:get("ASBBANK"), table("text"="ASB BANK", "x"=129.0, "y"=15.0, "w"= 259.0, "h"=79.0, "r"=255, "g"=196, "b"=0, "size"=43, "halign"=1, "valign"=1))
+        box(Elements:get("Rectangle113"), table("x"=158.0, "y"=39.0, "w"=7.0, "h"=16.0, "r"=255, "g"=195, "b"=0, "radius"=2.0))
+        box(Elements:get("Rectangle114"), table("x"=164.58, "y"=38.04, "w"=6.62, "h"=19.44, "r"=42, "g"=42, "b"=42, "radius"=0))
+        EGP:egpAngle(Elements:get("Rectangle114"), vec2(164.58, 38.04), vec2(0, 0), -20.0)
+    }
+    else {
+        #Title Section
+        box(Elements:get("Rectangle43"), table("x"=126.0, "y"=16.0, "w"=259.0, "h"=78.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+        text(Elements:get("COZZAHSBANK"), table("text"=BankName, "x"=127.0, "y"=16.0, "w"= 258.0, "h"=79.0, "r"=255, "g"=255, "b"=255, "size"=35, "halign"=1, "valign"=1))
+        circle(Elements:get("Ellipse8"), table("x"=384.0, "y"=94.0, "w"=15.0, "h"=15.0, "r"=89, "g"=89, "b"=89))
+        circle(Elements:get("Ellipse9"), table("x"=385.0, "y"=16.0, "w"=15.0, "h"=15.0, "r"=89, "g"=89, "b"=89))
+        circle(Elements:get("Ellipse10"), table("x"=127.0, "y"=94.0, "w"=15.0, "h"=15.0, "r"=89, "g"=89, "b"=89))
+        circle(Elements:get("Ellipse11"), table("x"=127.0, "y"=16.0, "w"=15.0, "h"=15.0, "r"=89, "g"=89, "b"=89))
+    }
+    timer(0.5,function() {
+        #ExitButton Section
+        box(Elements:get("ExitButton"), table("x"=104.0, "y"=420.0, "w"=304.0, "h"=82.0, "r"=217, "g"=217, "b"=217, "radius"=41.0))
+        box(Elements:get("Rectangle363"), table("x"=105.0, "y"=421.0, "w"=302.0, "h"=80.0, "r"=89, "g"=89, "b"=89, "radius"=41.0))
+        text(Elements:get("FINISHANDEXIT"), table("text"="FINISH AND EXIT", "x"=105.0, "y"=421.0, "w"= 302.0, "h"=80.0, "r"=255, "g"=255, "b"=255, "size"=35, "halign"=1, "valign"=1))
+    })
+}           
+
+function void instructionsScreen(Elements:table, EGP:wirelink) {
+    EGP:egpDrawTopLeft(1)
+    
+    # Container Box
+    box(Elements:get("Rectangle366"), table("x"=14.0, "y"=102.0, "w"=484.0, "h"=404.0, "r"=217, "g"=217, "b"=217, "radius"=52.0))
+    box(Elements:get("Rectangle365"), table("x"=16.0, "y"=104.0, "w"=480.0, "h"=400.0, "r"=42, "g"=42, "b"=42, "radius"=52.0))
+    
+    # Main Title
+    text(Elements:get("InstructTitle"), table("text"="HOW TO USE THE BANK", "x"=16.0, "y"=104.0, "w"=480.0, "h"=32.0, "r"=255, "g"=215, "b"=0, "size"=22, "halign"=1, "valign"=1))
+    
+    # Warning Box
+    box(Elements:get("WarningBox"), table("x"=26.0, "y"=138.0, "w"=460.0, "h"=34.0, "r"=89, "g"=0, "b"=0, "radius"=8.0))
+    text(Elements:get("WarningText"), table("text"="WARNING: DEPOSIT RACKS WITH PRINTERS OR THEY WILL BE DESTROYED!", "x"=26.0, "y"=138.0, "w"=460.0, "h"=34.0, "r"=255, "g"=0, "b"=0, "size"=13, "halign"=1, "valign"=1))
+    
+    # Divider line
+    box(Elements:get("TitleDivider"), table("x"=36.0, "y"=174.0, "w"=440.0, "h"=2.0, "r"=89, "g"=89, "b"=89, "radius"=0))
+    
+    # Section 1: Depositing Printers
+    text(Elements:get("Section1Title"), table("text"="DEPOSITING PRINTERS", "x"=36.0, "y"=182.0, "w"=440.0, "h"=18.0, "r"=255, "g"=215, "b"=0, "size"=15, "halign"=0, "valign"=1))
+    
+    text(Elements:get("Section1Line1"), table("text"="1. Deposit your printers in the bank. The owner will be notified", "x"=46.0, "y"=200.0, "w"=430.0, "h"=12.0, "r"=255, "g"=255, "b"=255, "size"=11, "halign"=0, "valign"=1))
+    text(Elements:get("Section1Line1b"), table("text"="   and assign you a storage slot.", "x"=46.0, "y"=210.0, "w"=430.0, "h"=12.0, "r"=255, "g"=255, "b"=255, "size"=11, "halign"=0, "valign"=1))
+    
+    text(Elements:get("Section1Line2"), table("text"="2. The banker collects from your printers on your behalf, and you", "x"=46.0, "y"=222.0, "w"=430.0, "h"=12.0, "r"=255, "g"=255, "b"=255, "size"=11, "halign"=0, "valign"=1))
+    text(Elements:get("Section1Line2b"), table("text"="   are automatically paid after tax.", "x"=46.0, "y"=232.0, "w"=430.0, "h"=12.0, "r"=255, "g"=255, "b"=255, "size"=11, "halign"=0, "valign"=1))
+    
+    text(Elements:get("Section1Line3"), table("text"="3. To reduce tax, buy a permanent membership upgrade from the", "x"=46.0, "y"=244.0, "w"=430.0, "h"=12.0, "r"=255, "g"=255, "b"=255, "size"=11, "halign"=0, "valign"=1))
+    text(Elements:get("Section1Line3b"), table("text"="   lobby. Memberships last for life.", "x"=46.0, "y"=254.0, "w"=430.0, "h"=12.0, "r"=255, "g"=255, "b"=255, "size"=11, "halign"=0, "valign"=1))
+    
+    # Section 2: Accessing Your Slot
+    text(Elements:get("Section2Title"), table("text"="ACCESSING YOUR SLOT", "x"=36.0, "y"=272.0, "w"=440.0, "h"=18.0, "r"=255, "g"=215, "b"=0, "size"=15, "halign"=0, "valign"=1))
+    
+    text(Elements:get("Section2Line1"), table("text"=" You'll be sent a customer code for the back entrance (to the right", "x"=46.0, "y"=290.0, "w"=430.0, "h"=12.0, "r"=255, "g"=255, "b"=255, "size"=11, "halign"=0, "valign"=1))
+    text(Elements:get("Section2Line1b"), table("text"="  of main doors). Enter it into the keypad.", "x"=46.0, "y"=300.0, "w"=430.0, "h"=12.0, "r"=255, "g"=255, "b"=255, "size"=11, "halign"=0, "valign"=1))
+    
+    text(Elements:get("Section2Line2"), table("text"=" Press E to open authorized doors. Your storage doors glow green", "x"=46.0, "y"=312.0, "w"=430.0, "h"=12.0, "r"=255, "g"=255, "b"=255, "size"=11, "halign"=0, "valign"=1))
+    text(Elements:get("Section2Line2b"), table("text"="  and stay open for 10 seconds.", "x"=46.0, "y"=322.0, "w"=430.0, "h"=12.0, "r"=255, "g"=255, "b"=255, "size"=11, "halign"=0, "valign"=1))
+    
+    text(Elements:get("Section2Line3"), table("text"=" You have 5 minutes of access. When time runs out, the alarm", "x"=46.0, "y"=334.0, "w"=430.0, "h"=12.0, "r"=255, "g"=255, "b"=255, "size"=11, "halign"=0, "valign"=1))
+    text(Elements:get("Section2Line3b"), table("text"="  activates and your access is revoked.", "x"=46.0, "y"=344.0, "w"=430.0, "h"=12.0, "r"=255, "g"=255, "b"=255, "size"=11, "halign"=0, "valign"=1))
+    
+    text(Elements:get("Section2Line4"), table("text"=" Forgot your code? Type !code in chat to resend it.", "x"=46.0, "y"=356.0, "w"=430.0, "h"=12.0, "r"=255, "g"=255, "b"=255, "size"=11, "halign"=0, "valign"=1))
+    
+    # Section 3: Storage Rules
+    text(Elements:get("Section3Title"), table("text"="STORAGE RULES", "x"=36.0, "y"=374.0, "w"=440.0, "h"=18.0, "r"=255, "g"=215, "b"=0, "size"=15, "halign"=0, "valign"=1))
+    
+    text(Elements:get("Section3Line1"), table("text"=" You can store printers and shipments in your assigned slot as", "x"=46.0, "y"=392.0, "w"=430.0, "h"=12.0, "r"=255, "g"=255, "b"=255, "size"=11, "halign"=0, "valign"=1))
+    text(Elements:get("Section3Line1b"), table("text"="  long as space is available.", "x"=46.0, "y"=402.0, "w"=430.0, "h"=12.0, "r"=255, "g"=255, "b"=255, "size"=11, "halign"=0, "valign"=1))
+    
+    text(Elements:get("Section3Line2"), table("text"=" Larger team-sized storage slots are available. Speak with the", "x"=46.0, "y"=414.0, "w"=430.0, "h"=12.0, "r"=255, "g"=255, "b"=255, "size"=11, "halign"=0, "valign"=1))
+    text(Elements:get("Section3Line2b"), table("text"="  banker if you'd like to upgrade.", "x"=46.0, "y"=424.0, "w"=430.0, "h"=12.0, "r"=255, "g"=255, "b"=255, "size"=11, "halign"=0, "valign"=1))
+    
+    # Exit Button
+    box(Elements:get("InstructionsExitButton"), table("x"=146.0, "y"=450.0, "w"=220.0, "h"=45.0, "r"=217, "g"=217, "b"=217, "radius"=22.5))
+    box(Elements:get("InstructionsExitButtonInner"), table("x"=147.0, "y"=451.0, "w"=218.0, "h"=43.0, "r"=42, "g"=42, "b"=42, "radius"=21.5))
+    text(Elements:get("InstructionsExitText"), table("text"="I UNDERSTAND", "x"=146.0, "y"=450.0, "w"=220.0, "h"=45.0, "r"=255, "g"=255, "b"=255, "size"=20, "halign"=1, "valign"=1))
+}
+
+function void memberHomeScreen(Elements:table, EGP:wirelink, Theme:string, NextScreen:function) {
+    EGP:clear()
+    EGP:egpDrawTopLeft(1)
+    
+    NextScreen()
+
+    #Background Section
+    box(Elements:get("Rectangle59"), table("x"=0.0, "y"=256.0, "w"=512.0, "h"=256.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+    box(Elements:get("Rectangle58"), table("x"=0.0, "y"=0.0, "w"=512.0, "h"=256.0, "r"=89, "g"=89, "b"=89, "radius"=0))
+    text(Elements:get("MADEWITHODIN"), table("text"="MADE WITH ODIN AND BOB TOMATOS FIGMA TO E2 EGP COMPILER", "x"=134.0, "y"=462.9, "w"= 243.0, "h"=44.09, "r"=255, "g"=255, "b"=255, "size"=15, "halign"=1, "valign"=1))
+    text(Elements:get("GETYOURMEMBER"), table("text"="GET YOUR MEMBERSHIP HERE", "x"=28.0, "y"=94.0, "w"= 456.0, "h"=62.0, "r"=255, "g"=255, "b"=255, "size"=27, "halign"=1, "valign"=1))
+        
+    #Button Section
+    circle(Elements:get("Ellipse28"), table("x"=256.0, "y"=256.0, "w"=100.0, "h"=100.0, "r"=118, "g"=118, "b"=118))
+    text(Elements:get("START"), table("text"="START", "x"=156.0, "y"=156.0, "w"= 200.0, "h"=200.0, "r"=255, "g"=255, "b"=255, "size"=51, "halign"=1, "valign"=1))
+    
+    if(Theme == "ASB") {
+        #ASB Title Section
+        box(Elements:get("Rectangle43"), table("x"=129.0, "y"=15.0, "w"=259.0, "h"=78.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+        circle(Elements:get("Ellipse8"), table("x"=387.0, "y"=93.0, "w"=15.0, "h"=15.0, "r"=89, "g"=89, "b"=89))
+        circle(Elements:get("Ellipse9"), table("x"=388.0, "y"=15.0, "w"=15.0, "h"=15.0, "r"=89, "g"=89, "b"=89))
+        circle(Elements:get("Ellipse10"), table("x"=130.0, "y"=93.0, "w"=15.0, "h"=15.0, "r"=89, "g"=89, "b"=89))
+        circle(Elements:get("Ellipse11"), table("x"=130.0, "y"=15.0, "w"=15.0, "h"=15.0, "r"=89, "g"=89, "b"=89))
+        text(Elements:get("ASBBANK"), table("text"="ASB BANK", "x"=129.0, "y"=15.0, "w"= 259.0, "h"=79.0, "r"=255, "g"=196, "b"=0, "size"=43, "halign"=1, "valign"=1))
+        box(Elements:get("Rectangle113"), table("x"=158.0, "y"=39.0, "w"=7.0, "h"=16.0, "r"=255, "g"=195, "b"=0, "radius"=2.0))
+        box(Elements:get("Rectangle114"), table("x"=164.58, "y"=38.04, "w"=6.62, "h"=19.44, "r"=42, "g"=42, "b"=42, "radius"=0))
+        EGP:egpAngle(Elements:get("Rectangle114"), vec2(164.58, 38.04), vec2(0, 0), -20.0)
+    }
+    else {
+        #Title Section
+        box(Elements:get("Rectangle43"), table("x"=126.0, "y"=16.0, "w"=259.0, "h"=78.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+        text(Elements:get("COZZAHSBANK"), table("text"=BankName, "x"=127.0, "y"=16.0, "w"= 258.0, "h"=79.0, "r"=255, "g"=255, "b"=255, "size"=35, "halign"=1, "valign"=1))
+        circle(Elements:get("Ellipse8"), table("x"=384.0, "y"=94.0, "w"=15.0, "h"=15.0, "r"=89, "g"=89, "b"=89))
+        circle(Elements:get("Ellipse9"), table("x"=385.0, "y"=16.0, "w"=15.0, "h"=15.0, "r"=89, "g"=89, "b"=89))
+        circle(Elements:get("Ellipse10"), table("x"=127.0, "y"=94.0, "w"=15.0, "h"=15.0, "r"=89, "g"=89, "b"=89))
+        circle(Elements:get("Ellipse11"), table("x"=127.0, "y"=16.0, "w"=15.0, "h"=15.0, "r"=89, "g"=89, "b"=89))
+    }
+    
+    EGP:egpParent(Elements:get("Ellipse28"), Elements:get("Rectangle58"))
+    EGP:egpParent(Elements:get("START"), Elements:get("Rectangle58"))
+    EGP:egpParent(Elements:get("GETYOURMEMBER"), Elements:get("Rectangle58"))
+    
+#[    #CommbankICO Section
+    box(Elements:get("Rectangle367"), table("x"=27.77, "y"=49.0, "w"=53.42, "h"=53.42, "r"=255, "g"=204, "b"=0, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle367"), vec2(27.77, 49.0), vec2(0, 0), 45.0)
+    box(Elements:get("Rectangle368"), table("x"=84.51, "y"=55.52, "w"=19.0, "h"=14.08, "r"=0, "g"=0, "b"=2, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle368"), vec2(79.51, 53.52), vec2(0, 0), 45.0)
+    box(Elements:get("Rectangle369"), table("x"=64.0, "y"=90.0, "w"=39.04, "h"=13.33, "r"=0, "g"=0, "b"=2, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle369"), vec2(63.0, 88.0), vec2(0, 0), 65.0)
+    box(Elements:get("Rectangle370"), table("x"=55.0, "y"=110.0, "w"=2.98, "h"=14.94, "r"=89, "g"=89, "b"=89, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle370"), vec2(55.0, 80.0), vec2(0, 0), 45.0)
+    box(Elements:get("Rectangle371"), table("x"=103.82, "y"=48, "w"=13.18, "h"=57.82, "r"=89, "g"=89, "b"=89, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle371"), vec2(103.82, 48), vec2(0, 0), -45.0)]#
+}
+
+function void membership(Elements:table, EGP:wirelink) {
+    
+    # Get tier configuration
+    local CopperR = getTierColorR(TIER_COPPER)
+    local CopperG = getTierColorG(TIER_COPPER)
+    local CopperB = getTierColorB(TIER_COPPER)
+    local CopperTax = getTierTax(TIER_COPPER) * 100
+    local CopperInsurance = getTierInsurance(TIER_COPPER)*100
+    
+    local SilverR = getTierColorR(TIER_SILVER)
+    local SilverG = getTierColorG(TIER_SILVER)
+    local SilverB = getTierColorB(TIER_SILVER)
+    local SilverTax = getTierTax(TIER_SILVER) * 100
+    local SilverInsurance = getTierInsurance(TIER_SILVER)*100
+    local SilverCost = getTierCost(TIER_SILVER)
+    
+    local GoldR = getTierColorR(TIER_GOLD)
+    local GoldG = getTierColorG(TIER_GOLD)
+    local GoldB = getTierColorB(TIER_GOLD)
+    local GoldTax = getTierTax(TIER_GOLD) * 100
+    local GoldInsurance = getTierInsurance(TIER_GOLD)*100
+    local GoldCost = getTierCost(TIER_GOLD)
+    
+    local DiamondR = getTierColorR(TIER_DIAMOND)
+    local DiamondG = getTierColorG(TIER_DIAMOND)
+    local DiamondB = getTierColorB(TIER_DIAMOND)
+    local DiamondTax = getTierTax(TIER_DIAMOND) * 100
+    local DiamondInsurance = getTierInsurance(TIER_DIAMOND)*100
+    local DiamondCost = getTierCost(TIER_DIAMOND)
+    
+    # Format cost display (convert to M format)
+    local SilverCostDisplay = formatNumber(SilverCost)
+    local GoldCostDisplay = formatNumber(GoldCost)
+    local DiamondCostDisplay = formatNumber(DiamondCost)
+    
+    #Background Section
+    box(Elements:get("Rectangle1"), table("x"=-256.0, "y"=256.0, "w"=724.08, "h"=365.57, "r"=89, "g"=89, "b"=89, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle1"), vec2(-256.0, 256.0), vec2(0, 0), 45.0)
+    box(Elements:get("Rectangle2"), table("x"=768.0, "y"=256.0, "w"=362.04, "h"=724.08, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle2"), vec2(768.0, 256.0), vec2(0, -724.08), 135)
+    box(Elements:get("Rectangle12"), table("x"=214.0, "y"=256.43, "w"=60.0, "h"=60.0, "r"=89, "g"=89, "b"=89, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle12"), vec2(214.0, 256.43), vec2(0, 0), 45.0)
+    box(Elements:get("Rectangle14"), table("x"=306.0, "y"=171.43, "w"=60.0, "h"=60.0, "r"=89, "g"=89, "b"=89, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle14"), vec2(306.0, 171.43), vec2(0, 0), 45.0)
+    box(Elements:get("Rectangle8"), table("x"=384.0, "y"=86.43, "w"=60.0, "h"=60.0, "r"=89, "g"=89, "b"=89, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle8"), vec2(384.0, 86.43), vec2(0, 0), 45.0)
+    box(Elements:get("Rectangle10"), table("x"=44.0, "y"=426.43, "w"=60.0, "h"=60.0, "r"=89, "g"=89, "b"=89, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle10"), vec2(44.0, 426.43), vec2(0, 0), 45.0)
+    box(Elements:get("Rectangle11"), table("x"=-42.0, "y"=511.43, "w"=60.0, "h"=60.0, "r"=89, "g"=89, "b"=89, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle11"), vec2(-42.0, 511.43), vec2(0, 0), 45.0)
+    box(Elements:get("1" + "Rectangle10"), table("x"=469.0, "y"=1.43, "w"=60.0, "h"=60.0, "r"=89, "g"=89, "b"=89, "radius"=0))
+    EGP:egpAngle(Elements:get("1" + "Rectangle10"), vec2(469.0, 1.43), vec2(0, 0), 45.0)
+    text(Elements:get("PICKTHETIERT"), table("text"="PICK THE TIER THAT BEST SUITS YOUR BANKING NEEDS", "x"=28.0, "y"=94.0, "w"= 455.0, "h"=102.0, "r"=255, "g"=255, "b"=255, "size"=27, "halign"=1, "valign"=1))
+
+    #MembershipBackground Section
+    box(Elements:get("Rectangle47"), table("x"=10.0, "y"=196.0, "w"=491.0, "h"=260.0, "r"=255, "g"=255, "b"=255, "radius"=25.0))
+    EGP:egpColor(Elements:get("Rectangle47"),vec4(255,255,255,70))
+
+    #membership Copper Section
+    circle(Elements:get("Ellipse16"), table("x"=123.23, "y"=220.095, "w"=10.58, "h"=11.095, "r"=CopperR, "g"=CopperG, "b"=CopperB))
+    circle(Elements:get("Ellipse17"), table("x"=123.23, "y"=430.90500000000003, "w"=10.58, "h"=11.095, "r"=CopperR, "g"=CopperG, "b"=CopperB))
+    circle(Elements:get("Ellipse18"), table("x"=38.58, "y"=220.095, "w"=10.58, "h"=11.095, "r"=CopperR, "g"=CopperG, "b"=CopperB))
+    circle(Elements:get("Ellipse19"), table("x"=38.58, "y"=430.90500000000003, "w"=10.58, "h"=11.095, "r"=CopperR, "g"=CopperG, "b"=CopperB))
+    box(Elements:get("Rectangle51"), table("x"=38.58, "y"=209.0, "w"=84.65, "h"=233.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+    box(Elements:get("Rectangle53"), table("x"=28.0, "y"=220.0, "w"=106.0, "h"=211.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+    box(Elements:get("CopperButton"), table("x"=37.0, "y"=374.0, "w"=87.0, "h"=38.0, "r"=217, "g"=217, "b"=217, "radius"=19.4167))
+    text(Elements:get("COPPER"), table("text"="COPPER", "x"=28.0, "y"=230.08, "w"= 105.81, "h"=21.08, "r"=CopperR, "g"=CopperG, "b"=CopperB, "size"=19, "halign"=1, "valign"=1))
+    text(Elements:get("35%INSURA"), table("text"="TAX: " + CopperTax + "% INSURANCE: " + CopperInsurance + "%", "x"=39.0, "y"=256.0, "w"= 84.0, "h"=97.0, "r"=255, "g"=255, "b"=255, "size"=14, "halign"=1, "valign"=1))
+    text(Elements:get("DEFAULT"), table("text"="DEFAULT", "x"=28.0, "y"=383.0, "w"= 106.0, "h"=19.0, "r"=0, "g"=0, "b"=0, "size"=16, "halign"=1, "valign"=1))
+    #CopperICO Section
+    box(Elements:get("Rectangle60"), table("x"=70.58, "y"=263.86, "w"=21.74, "h"=6.21, "r"=CopperR, "g"=CopperG, "b"=CopperB, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle60"), vec2(70.58, 263.86), vec2(0, 0), 29.0)
+    box(Elements:get("Rectangle62"), table("x"=69.82, "y"=264.07, "w"=12.03, "h"=6.75, "r"=CopperR, "g"=CopperG, "b"=CopperB, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle62"), vec2(69.82, 264.07), vec2(0, 0), -29.0)
+    box(Elements:get("Rectangle64"), table("x"=74.42, "y"=269.72, "w"=21.26, "h"=7.0, "r"=CopperR, "g"=CopperG, "b"=CopperB, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle64"), vec2(74.42, 269.72), vec2(0, 0), 30.0)
+    box(Elements:get("Rectangle65"), table("x"=70.7, "y"=262.96, "w"=8.67, "h"=1.14, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle65"), vec2(70.7, 262.96), vec2(0, 0), -115.0)
+    box(Elements:get("Rectangle61"), table("x"=69.8, "y"=263.26, "w"=8.67, "h"=1.14, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle61"), vec2(69.8, 263.26), vec2(0, 0), -27.0)
+    box(Elements:get("Rectangle63"), table("x"=76.92, "y"=267.41, "w"=1.06, "h"=8.92, "r"=42, "g"=42, "b"=42, "radius"=0))
+    box(Elements:get("Rectangle66"), table("x"=86.91, "y"=251.0, "w"=8.67, "h"=5.04, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle66"), vec2(86.91, 251.0), vec2(0, 0), -22.0)
+    box(Elements:get("1" + "Rectangle65"), table("x"=77.14, "y"=267.26, "w"=18.58, "h"=1.14, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("1" + "Rectangle65"), vec2(77.14, 267.26), vec2(0, 0), 29.0)
+    
+    #membership Silver Section
+    circle(Elements:get("1" + "Ellipse16"), table("x"=239.63000000000002, "y"=220.095, "w"=10.58, "h"=11.095, "r"=SilverR, "g"=SilverG, "b"=SilverB))
+    circle(Elements:get("1" + "Ellipse17"), table("x"=239.63000000000002, "y"=430.90500000000003, "w"=10.58, "h"=11.095, "r"=SilverR, "g"=SilverG, "b"=SilverB))
+    circle(Elements:get("1" + "Ellipse18"), table("x"=154.98000000000002, "y"=220.095, "w"=10.58, "h"=11.095, "r"=SilverR, "g"=SilverG, "b"=SilverB))
+    circle(Elements:get("1" + "Ellipse19"), table("x"=154.98000000000002, "y"=430.90500000000003, "w"=10.58, "h"=11.095, "r"=SilverR, "g"=SilverG, "b"=SilverB))
+    box(Elements:get("1" + "Rectangle51"), table("x"=154.98, "y"=209.0, "w"=84.65, "h"=233.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+    box(Elements:get("1" + "Rectangle53"), table("x"=144.0, "y"=220.0, "w"=106.0, "h"=211.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+    text(Elements:get("SILVER"), table("text"="SILVER", "x"=144.4, "y"=230.08, "w"= 105.81, "h"=21.08, "r"=SilverR, "g"=SilverG, "b"=SilverB, "size"=19, "halign"=1, "valign"=1))
+    box(Elements:get("SilverButton"), table("x"=153.0, "y"=374.0, "w"=87.0, "h"=38.0, "r"=217, "g"=217, "b"=217, "radius"=19.4167))
+    text(Elements:get("SESSIONPASS"), table("text"="PERM PASS", "x"=155.0, "y"=373.0, "w"= 84.0, "h"=38.0, "r"=0, "g"=0, "b"=0, "size"=16, "halign"=1, "valign"=1))
+    text(Elements:get("25%INSURA"), table("text"="TAX: " + SilverTax + "% INSURANCE: " + SilverInsurance + "%", "x"=155.0, "y"=256.0, "w"= 85.0, "h"=97.0, "r"=255, "g"=255, "b"=255, "size"=14, "halign"=1, "valign"=1))
+    text(Elements:get("1M"), table("text"=SilverCostDisplay, "x"=144.0, "y"=353.0, "w"= 106.0, "h"=21.0, "r"=255, "g"=255, "b"=255, "size"=16, "halign"=1, "valign"=1))
+    #SilverICO Section
+    box(Elements:get("1" + "Rectangle60"), table("x"=186.58, "y"=263.86, "w"=21.74, "h"=6.21, "r"=SilverR, "g"=SilverG, "b"=SilverB, "radius"=0))
+    EGP:egpAngle(Elements:get("1" + "Rectangle60"), vec2(186.58, 263.86), vec2(0, 0), 29.0)
+    box(Elements:get("1" + "Rectangle62"), table("x"=185.82, "y"=264.07, "w"=12.03, "h"=6.75, "r"=SilverR, "g"=SilverG, "b"=SilverB, "radius"=0))
+    EGP:egpAngle(Elements:get("1" + "Rectangle62"), vec2(185.82, 264.07), vec2(0, 0), -29.0)
+    box(Elements:get("1" + "Rectangle64"), table("x"=190.42, "y"=269.72, "w"=21.26, "h"=7.0, "r"=SilverR, "g"=SilverG, "b"=SilverB, "radius"=0))
+    EGP:egpAngle(Elements:get("1" + "Rectangle64"), vec2(190.42, 269.72), vec2(0, 0), 30.0)
+    box(Elements:get("2" + "Rectangle65"), table("x"=186.7, "y"=262.96, "w"=8.67, "h"=1.14, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("2" + "Rectangle65"), vec2(186.7, 262.96), vec2(0, 0), -115.0)
+    box(Elements:get("1" + "Rectangle61"), table("x"=185.8, "y"=263.26, "w"=8.67, "h"=1.14, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("1" + "Rectangle61"), vec2(185.8, 263.26), vec2(0, 0), -27.0)
+    box(Elements:get("1" + "Rectangle63"), table("x"=192.92, "y"=267.41, "w"=1.06, "h"=8.92, "r"=42, "g"=42, "b"=42, "radius"=0))
+    box(Elements:get("1" + "Rectangle66"), table("x"=202.91, "y"=251.0, "w"=8.67, "h"=5.04, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("1" + "Rectangle66"), vec2(202.91, 251.0), vec2(0, 0), -22.0)
+    box(Elements:get("3" + "Rectangle65"), table("x"=193.14, "y"=267.26, "w"=18.58, "h"=1.14, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("3" + "Rectangle65"), vec2(193.14, 267.26), vec2(0, 0), 29.0)
+    
+    #membership Gold Section
+    circle(Elements:get("2" + "Ellipse16"), table("x"=356.02, "y"=220.095, "w"=10.58, "h"=11.095, "r"=GoldR, "g"=GoldG, "b"=GoldB))
+    circle(Elements:get("2" + "Ellipse17"), table("x"=356.02, "y"=430.90500000000003, "w"=10.58, "h"=11.095, "r"=GoldR, "g"=GoldG, "b"=GoldB))
+    circle(Elements:get("2" + "Ellipse18"), table("x"=271.37, "y"=220.095, "w"=10.58, "h"=11.095, "r"=GoldR, "g"=GoldG, "b"=GoldB))
+    circle(Elements:get("2" + "Ellipse19"), table("x"=271.37, "y"=430.90500000000003, "w"=10.58, "h"=11.095, "r"=GoldR, "g"=GoldG, "b"=GoldB))
+    box(Elements:get("2" + "Rectangle51"), table("x"=271.37, "y"=209.0, "w"=84.65, "h"=233.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+    box(Elements:get("2" + "Rectangle53"), table("x"=261.0, "y"=220.0, "w"=106.0, "h"=211.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+    box(Elements:get("GoldButton"), table("x"=270.0, "y"=374.0, "w"=87.0, "h"=38.0, "r"=217, "g"=217, "b"=217, "radius"=19.4167))
+    text(Elements:get("GOLD"), table("text"="GOLD", "x"=260.79, "y"=230.08, "w"= 105.81, "h"=21.08, "r"=GoldR, "g"=GoldG, "b"=GoldB, "size"=19, "halign"=1, "valign"=1))
+    text(Elements:get("1" + "SESSIONPASS"), table("text"="PERM PASS", "x"=272.0, "y"=373.0, "w"= 84.0, "h"=38.0, "r"=0, "g"=0, "b"=0, "size"=16, "halign"=1, "valign"=1))
+    text(Elements:get("20%INSURA"), table("text"="TAX: " + GoldTax + "% INSURANCE: " + GoldInsurance + "%", "x"=271.0, "y"=256.0, "w"= 85.0, "h"=97.0, "r"=255, "g"=255, "b"=255, "size"=14, "halign"=1, "valign"=1))
+    text(Elements:get("2M"), table("text"=GoldCostDisplay, "x"=261.0, "y"=353.0, "w"= 106.0, "h"=21.0, "r"=255, "g"=255, "b"=255, "size"=16, "halign"=1, "valign"=1))
+    #GoldICO Section
+    box(Elements:get("2" + "Rectangle60"), table("x"=303.58, "y"=263.86, "w"=21.74, "h"=6.21, "r"=GoldR, "g"=GoldG, "b"=GoldB, "radius"=0))
+    EGP:egpAngle(Elements:get("2" + "Rectangle60"), vec2(303.58, 263.86), vec2(0, 0), 29.0)
+    box(Elements:get("2" + "Rectangle62"), table("x"=302.82, "y"=264.07, "w"=12.03, "h"=6.75, "r"=GoldR, "g"=GoldG, "b"=GoldB, "radius"=0))
+    EGP:egpAngle(Elements:get("2" + "Rectangle62"), vec2(302.82, 264.07), vec2(0, 0), -29.0)
+    box(Elements:get("2" + "Rectangle64"), table("x"=307.42, "y"=269.72, "w"=21.26, "h"=7.0, "r"=GoldR, "g"=GoldG, "b"=GoldB, "radius"=0))
+    EGP:egpAngle(Elements:get("2" + "Rectangle64"), vec2(307.42, 269.72), vec2(0, 0), 30.0)
+    box(Elements:get("4" + "Rectangle65"), table("x"=303.7, "y"=262.96, "w"=8.67, "h"=1.14, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("4" + "Rectangle65"), vec2(303.7, 262.96), vec2(0, 0), -115.0)
+    box(Elements:get("2" + "Rectangle61"), table("x"=302.8, "y"=263.26, "w"=8.67, "h"=1.14, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("2" + "Rectangle61"), vec2(302.8, 263.26), vec2(0, 0), -27.0)
+    box(Elements:get("2" + "Rectangle63"), table("x"=309.92, "y"=267.41, "w"=1.06, "h"=8.92, "r"=42, "g"=42, "b"=42, "radius"=0))
+    box(Elements:get("2" + "Rectangle66"), table("x"=319.91, "y"=251.0, "w"=8.67, "h"=5.04, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("2" + "Rectangle66"), vec2(319.91, 251.0), vec2(0, 0), -22.0)
+    box(Elements:get("5" + "Rectangle65"), table("x"=310.14, "y"=267.26, "w"=18.58, "h"=1.14, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("5" + "Rectangle65"), vec2(310.14, 267.26), vec2(0, 0), 29.0)
+
+    #membership diamond Section
+    circle(Elements:get("3" + "Ellipse16"), table("x"=472.41999999999996, "y"=220.095, "w"=10.58, "h"=11.095, "r"=DiamondR, "g"=DiamondG, "b"=DiamondB))
+    circle(Elements:get("3" + "Ellipse17"), table("x"=472.41999999999996, "y"=430.90500000000003, "w"=10.58, "h"=11.095, "r"=DiamondR, "g"=DiamondG, "b"=DiamondB))
+    circle(Elements:get("3" + "Ellipse18"), table("x"=387.77, "y"=220.095, "w"=10.58, "h"=11.095, "r"=DiamondR, "g"=DiamondG, "b"=DiamondB))
+    circle(Elements:get("3" + "Ellipse19"), table("x"=387.77, "y"=430.90500000000003, "w"=10.58, "h"=11.095, "r"=DiamondR, "g"=DiamondG, "b"=DiamondB))
+    box(Elements:get("3" + "Rectangle51"), table("x"=387.77, "y"=209.0, "w"=84.65, "h"=233.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+    box(Elements:get("Rectangle52"), table("x"=377.0, "y"=220.0, "w"=106.0, "h"=211.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+    box(Elements:get("DiamondButton"), table("x"=386.0, "y"=374.0, "w"=87.0, "h"=38.0, "r"=217, "g"=217, "b"=217, "radius"=19.4167))
+    text(Elements:get("DIAMOND"), table("text"="DIAMOND", "x"=377.19, "y"=227.86, "w"= 105.81, "h"=25.52, "r"=DiamondR, "g"=DiamondG, "b"=DiamondB, "size"=19, "halign"=1, "valign"=1))
+    text(Elements:get("2" + "SESSIONPASS"), table("text"="PERM PASS", "x"=388.0, "y"=373.0, "w"= 84.0, "h"=38.0, "r"=0, "g"=0, "b"=0, "size"=16, "halign"=1, "valign"=1))
+    text(Elements:get("10%INSURA"), table("text"="TAX: " + DiamondTax + "% INSURANCE: " + DiamondInsurance + "%", "x"=388.0, "y"=256.0, "w"= 87.0, "h"=97.0, "r"=255, "g"=255, "b"=255, "size"=14, "halign"=1, "valign"=1))
+    text(Elements:get("5M"), table("text"=DiamondCostDisplay, "x"=377.0, "y"=353.0, "w"= 106.0, "h"=21.0, "r"=255, "g"=255, "b"=255, "size"=16, "halign"=1, "valign"=1))
+    #diamondICO Section
+    box(Elements:get("Rectangle67"), table("x"=411.69, "y"=249.46, "w"=36.97, "h"=29.48, "r"=DiamondR, "g"=DiamondG, "b"=DiamondB, "radius"=0))
+    box(Elements:get("Rectangle68"), table("x"=411.22, "y"=257.24, "w"=37.92, "h"=1.23, "r"=42, "g"=42, "b"=42, "radius"=0))
+    box(Elements:get("Rectangle69"), table("x"=447.18, "y"=247.02, "w"=9.6, "h"=4.31, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle69"), vec2(447.18, 247.02), vec2(0, 0), -57.0)
+    box(Elements:get("Rectangle70"), table("x"=408.01, "y"=255.16, "w"=9.73, "h"=4.31, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle70"), vec2(408.01, 255.16), vec2(0, 0), 57.0)
+    box(Elements:get("Rectangle71"), table("x"=416.54, "y"=249.6, "w"=1.23, "h"=10.56, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle71"), vec2(416.54, 249.6), vec2(0, 0), 37.0)
+    box(Elements:get("Rectangle72"), table("x"=442.97, "y"=248.9, "w"=1.23, "h"=10.56, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle72"), vec2(442.97, 248.9), vec2(0, 0), -37.0)
+    box(Elements:get("Rectangle74"), table("x"=429.42, "y"=248.71, "w"=1.23, "h"=10.56, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle74"), vec2(429.42, 248.71), vec2(0, 0), -37.0)
+    box(Elements:get("Rectangle75"), table("x"=436.16, "y"=257.9, "w"=1.23, "h"=22.39, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle75"), vec2(436.16, 257.9), vec2(0, 0), -16.0)
+    box(Elements:get("Rectangle77"), table("x"=449.71, "y"=256.97, "w"=13.41, "h"=29.52, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle77"), vec2(449.71, 256.97), vec2(0, 0), -40.0)
+    box(Elements:get("Rectangle78"), table("x"=401.0, "y"=266.63, "w"=13.58, "h"=29.52, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle78"), vec2(401.0, 266.63), vec2(0, 0), 40.0)
+    box(Elements:get("Rectangle76"), table("x"=422.88, "y"=258.34, "w"=1.23, "h"=22.39, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle76"), vec2(422.88, 258.34), vec2(0, 0), 16.0)
+    box(Elements:get("Rectangle73"), table("x"=429.89, "y"=249.64, "w"=1.23, "h"=10.56, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle73"), vec2(429.89, 249.64), vec2(0, 0), 37.0)
+    
+}
+
+
+function void guardScreen(Salary:number, Guards:table) {
+    EGP:egpClear()
+    EGP:egpDrawTopLeft(1)
+
+    #Background Section
+    box(Elements:get("Rectangle234"), table("x"=0.0, "y"=0.0, "w"=512.0, "h"=512.0, "r"=89, "g"=89, "b"=89, "radius"=0))
+    box(Elements:get("Rectangle235"), table("x"=67.0, "y"=0.0, "w"=379.0, "h"=512.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+    box(Elements:get("Rectangle236"), table("x"=67.0, "y"=0.0, "w"=379.0, "h"=61.0, "r"=55, "g"=55, "b"=55, "radius"=0))
+    box(Elements:get("Rectangle237"), table("x"=67.0, "y"=59.0, "w"=379.0, "h"=4.0, "r"=0, "g"=0, "b"=0, "radius"=0))
+    text(Elements:get("COZZAHSBANKG"), table("text"=BankName + " GUARDS", "x"=67.0, "y"=0.0, "w"= 379.0, "h"=59.0, "r"=255, "g"=255, "b"=255, "size"=27, "halign"=1, "valign"=1))
+
+    #Apply Section
+    box(Elements:get("Rectangle238"), table("x"=0.0, "y"=288.0, "w"=512.0, "h"=224.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+    text(Elements:get("SALARY"), table("text"="SALARY:", "x"=87.0, "y"=315.0, "w"= 169.0, "h"=35.0, "r"=255, "g"=255, "b"=255, "size"=27, "halign"=2, "valign"=1))
+    text(Elements:get("APPLYTOBEAG"), table("text"="APPLY TO BE A GUARD AT " + BankName, "x"=0.0, "y"=288.0, "w"= 512.0, "h"=33.0, "r"=255, "g"=255, "b"=255, "size"=19, "halign"=1, "valign"=1))
+    text(Elements:get("$1.5MIL/H"), table("text"= formatNumber(Salary) + "/H", "x"=256.0, "y"=315.0, "w"= 172.0, "h"=35.0, "r"=30, "g"=178, "b"=0, "size"=27, "halign"=0, "valign"=1))
+    text(Elements:get("SECUREPRINTING"), table("text"="SECURE PRINTING AT 0% TAX", "x"=0.0, "y"=350.0, "w"= 512.0, "h"=35.0, "r"=255, "g"=255, "b"=255, "size"=27, "halign"=1, "valign"=1))
+    box(Elements:get("ApplyButton"), table("x"=131.0, "y"=410.0, "w"=250.0, "h"=80.0, "r"=217, "g"=217, "b"=217, "radius"=50.0))
+    box(Elements:get("Rectangle240"), table("x"=136.0, "y"=415.0, "w"=240.0, "h"=70.0, "r"=42, "g"=42, "b"=42, "radius"=50.0))
+    box(Elements:get("1" + "Rectangle238"), table("x"=0.0, "y"=286.0, "w"=512.0, "h"=4.0, "r"=0, "g"=0, "b"=0, "radius"=0))
+    text(Elements:get("APPLYNOW"), table("text"="APPLY NOW", "x"=131.0, "y"=410.0, "w"= 250.0, "h"=80.0, "r"=255, "g"=255, "b"=255, "size"=27, "halign"=1, "valign"=1))
+
+    #Guards
+    SteamIDs = Guards:keys()
+    GuardSlots = array("GUARD1", "GUARD2", "GUARD3", "GUARD4")
+    GuardYPositions = array(69.0, 126.0, 183.0, 240.0)
+    
+    for(I = 1, 4) {
+        local GuardName = "EMPTY"  # Default to EMPTY
+        local IsEmpty = 1  # Track if slot is empty
+        
+        # If we have a guard in this slot, get their actual name
+        if(I <= SteamIDs:count()) {
+            local GuardSteamID = SteamIDs[I, string]
+            
+            # Find the player and get their name
+            for(I = 1, _MAXPLAYERS) {
+                local Player = player(I)
+                if(Player:isValid() && Player:steamID() == GuardSteamID) {
+                    GuardName = Player:name():upper()
+                    IsEmpty = 0  # Slot is occupied
+                    break
+                }
+            }
+        }
+        
+        # Set colors based on slot status
+        local R = IsEmpty ? 255 : 255  # White for empty, Gold R for occupied
+        local G = IsEmpty ? 255 : 215  # White for empty, Gold G for occupied
+        local B = IsEmpty ? 255 : 0    # White for empty, Gold B for occupied
+        
+        # Display the guard slot
+        text(Elements:get(GuardSlots[I, string]), table(
+            "text" = GuardName,
+            "x" = 67.0,
+            "y" = GuardYPositions[I, number],
+            "w" = 379.0,
+            "h" = 39.0,
+            "r" = R,
+            "g" = G,
+            "b" = B,
+            "size" = 27,
+            "halign" = 1,
+            "valign" = 1
+        ))
+    }
+
+    #diamondICO Section
+    box(Elements:get("Rectangle67"), table("x"=23.52, "y"=408.42, "w"=81.33, "h"=64.86, "r"=185, "g"=242, "b"=255, "radius"=0))
+    box(Elements:get("Rectangle68"), table("x"=22.48, "y"=425.52, "w"=83.42, "h"=2.71, "r"=42, "g"=42, "b"=42, "radius"=0))
+    box(Elements:get("Rectangle69"), table("x"=101.6, "y"=403.04, "w"=21.11, "h"=9.48, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle69"), vec2(101.6, 403.04), vec2(0, 0), -57.0)
+    box(Elements:get("Rectangle70"), table("x"=15.43, "y"=420.96, "w"=21.42, "h"=9.48, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle70"), vec2(15.43, 420.96), vec2(0, 0), 57.0)
+    box(Elements:get("Rectangle71"), table("x"=34.19, "y"=408.71, "w"=2.71, "h"=23.22, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle71"), vec2(34.19, 408.71), vec2(0, 0), 37.0)
+    box(Elements:get("Rectangle72"), table("x"=92.34, "y"=407.17, "w"=2.71, "h"=23.22, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle72"), vec2(92.34, 407.17), vec2(0, 0), -37.0)
+    box(Elements:get("Rectangle74"), table("x"=62.52, "y"=406.75, "w"=2.71, "h"=23.22, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle74"), vec2(62.52, 406.75), vec2(0, 0), -37.0)
+    box(Elements:get("Rectangle75"), table("x"=77.34, "y"=426.99, "w"=2.71, "h"=49.26, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle75"), vec2(77.34, 426.99), vec2(0, 0), -16.0)
+    box(Elements:get("Rectangle77"), table("x"=107.17, "y"=424.93, "w"=29.5, "h"=64.95, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle77"), vec2(107.17, 424.93), vec2(0, 0), -40.0)
+    box(Elements:get("Rectangle78"), table("x"=0.0, "y"=446.19, "w"=29.88, "h"=64.95, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle78"), vec2(0.0, 446.19), vec2(0, 0), 40.0)
+    box(Elements:get("Rectangle76"), table("x"=48.13, "y"=427.94, "w"=2.71, "h"=49.26, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle76"), vec2(48.13, 427.94), vec2(0, 0), 16.0)
+    box(Elements:get("Rectangle73"), table("x"=63.56, "y"=408.8, "w"=2.71, "h"=23.22, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle73"), vec2(63.56, 408.8), vec2(0, 0), 37.0)
+
+    #GoldICO Section
+    box(Elements:get("Rectangle60"), table("x"=411.88, "y"=436.8, "w"=70.66, "h"=20.18, "r"=255, "g"=215, "b"=0, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle60"), vec2(411.88, 436.8), vec2(0, 0), 29.0)
+    box(Elements:get("Rectangle62"), table("x"=409.42, "y"=437.47, "w"=39.08, "h"=21.92, "r"=255, "g"=215, "b"=0, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle62"), vec2(409.42, 437.47), vec2(0, 0), -29.0)
+    box(Elements:get("Rectangle64"), table("x"=424.36, "y"=455.83, "w"=69.1, "h"=22.75, "r"=255, "g"=215, "b"=0, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle64"), vec2(424.36, 455.83), vec2(0, 0), 30.0)
+    box(Elements:get("Rectangle65"), table("x"=412.28, "y"=433.88, "w"=28.19, "h"=3.71, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle65"), vec2(412.28, 433.88), vec2(0, 0), -115.0)
+    box(Elements:get("Rectangle61"), table("x"=409.36, "y"=434.84, "w"=28.19, "h"=3.71, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle61"), vec2(409.36, 434.84), vec2(0, 0), -27.0)
+    box(Elements:get("Rectangle63"), table("x"=432.49, "y"=448.34, "w"=3.43, "h"=29.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+    box(Elements:get("Rectangle66"), table("x"=464.95, "y"=395.0, "w"=28.19, "h"=16.38, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle66"), vec2(464.95, 395.0), vec2(0, 0), -22.0)
+    box(Elements:get("1" + "Rectangle65"), table("x"=433.19, "y"=447.83, "w"=60.38, "h"=3.72, "r"=42, "g"=42, "b"=42, "radius"=0))
+    EGP:egpAngle(Elements:get("1" + "Rectangle65"), vec2(433.19, 447.83), vec2(0, 0), 29.0)
+
+}           

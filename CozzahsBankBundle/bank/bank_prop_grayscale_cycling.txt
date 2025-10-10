@@ -1,0 +1,61 @@
+@name Cozzah's bank prop grayscale cycling
+@inputs [AlarmActive Button]:number [Prop]:entity
+@persist [Props]:array
+
+if(first() || dupefinished()) {
+    let Mat = "lights/white"
+    Prop = _NO_ENTITY
+    findIncludeModel("models/hunter/plates/plate6.mdl")
+    findIncludeModel("models/hunter/plates/plate8.mdl")
+    findIncludeModel("models/hunter/plates/plate3.mdl")
+    findIncludeModel("models/hunter/plates/plate175.mdl")
+    findIncludeModel("models/hunter/plates/plate4.mdl")
+    findIncludeModel("models/hunter/plates/plate025.mdl")
+    findIncludeModel("models/hunter/plates/plate5.mdl")
+    findIncludeModel("models/hunter/plates/plate2.mdl")
+    findIncludeModel("models/props_c17/fence01a.mdl")
+    findInSphere(entity():pos(),2000)
+    Props = findToArray()
+    let Owner = owner()
+    foreach(_:number, Prop:entity = Props) {
+        if (Prop:getMaterial() == "cssconvertedmats/lightbareon01") { continue }
+        elseif (Prop:owner() == Owner) {
+            if(Prop:model() != "models/props_c17/fence01a.mdl") { Prop:setMaterial(Mat) }
+        }
+    }
+    timer("ALARM",1,0,function() {
+        if(AlarmActive) {
+            foreach(_:number, Prop:entity = Props) {
+                if (Prop:owner() == owner()) {
+                    if (Prop:getMaterial() == "cssconvertedmats/lightbareon01") { continue }
+                    if(Prop:getColor4() != vec4(255,0,0,255)) { Prop:setColor(vec(255,0,0),255) }
+                    else {
+                        if(Prop:model() != "models/props_c17/fence01a.mdl") {
+                           Prop:setColor(vec(255,0,0),0)
+                        }
+                        else { Prop:setColor(vec(255,255,255),255) }
+                    }
+                }
+            }
+        }
+    })
+    timer("cycling",0.1,0,function() {
+        if(!AlarmActive) {
+            let Alpha = 255
+            # Calculate grayscale value cycling from black (0) to light gray (200)
+            GrayValue = 100 + sin(curtime() * 5) * 100  # Cycles between 0 and 200
+            let Colour = vec(GrayValue, GrayValue, GrayValue)
+            
+            let Owner = owner()
+            foreach(_:number, Prop:entity = Props) {
+                if (Prop:getMaterial() == "cssconvertedmats/lightbareon01") { continue }
+                if (Prop:owner() == Owner) {
+                    Prop:setColor(Colour, Alpha)
+                }
+            }
+        }
+    })
+}
+
+if(Button && Prop:isValid()) { Prop:setMaterial("cssconvertedmats/nuke_metalgrate_01") }
+if(!Button && Prop:isValid()) { Prop:setMaterial("cssconvertedmats/train_largemetal_door_01") }

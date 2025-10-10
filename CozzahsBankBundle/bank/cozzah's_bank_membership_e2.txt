@@ -1,0 +1,240 @@
+@name Cozzah's Banker E2 Membership
+@persist [CurrentPlayer]:entity
+@persist [MemberData]:table [E2Chips]:array
+@persist [TIER_SILVER TIER_GOLD TIER_DIAMOND]:number
+#include "CozzahsBankBundle/includes/animations"
+#include "CozzahsBankBundle/includes/ui"
+#include "CozzahsBankBundle/includes/functions"
+#include "CozzahsBankBundle/includes/membership_configuration"
+
+function void startMemberDataLoading() {
+    if(fileCanLoad()) {
+        fileLoad("banker_memberdata.txt")
+    }
+    else {
+        error("Cannot load member data file")
+    }
+}
+
+if(first() || dupefinished() || ~EGP) {
+    EGP:clear()
+    CurrentPlayer = _NO_ENTITY
+    
+    # Constants for MemberData Tiers
+    TIER_SILVER = 1
+    TIER_GOLD = 2
+    TIER_DIAMOND = 3
+
+    # Initialize single member table
+    MemberData = table()
+    E2Chips = array()
+    
+    # Load member data from file
+    timer("loadMemberData",1, function() {
+        startMemberDataLoading()
+    })
+    
+    memberHomeScreen(Elements, EGP,"default",function() {
+        membership(Elements, EGP)
+    })
+}
+
+function void saveMemberData() {
+    if(fileCanWrite()) {
+        fileWrite("banker_memberdata.txt", jsonEncode(MemberData, 1))
+        print("Saved member data with " + MemberData:count() + " entries")
+    } else {
+        print("{! Cannot save member data - file system busy}")
+    }
+}
+
+function void addMembershipData(Player:entity, Tier:number) {
+    if(!Player:isValid()) { return }
+    
+    let SteamID = Player:steamID()
+    let CurrentTier = getMemberDataTier(Player, MemberData)
+    
+    # Don't allow downgrading
+    if(CurrentTier >= Tier) {
+        Player:msg("{!yellow [" + BankName + "]} {yellow You already have same or higher tier membership!}")
+        return
+    }
+    
+    # Add/update membership tier - store as a number
+    MemberData[SteamID, number] = Tier
+    
+    # Save to file after updating
+    saveMemberData()
+    
+    # Send appropriate message based on tier
+    if(Tier == TIER_SILVER) {
+        Player:msg("{!yellow [" + BankName + "]} {" + getTierColor(TIER_SILVER) + " Congratulations! You are now a Silver member!}")
+    }
+    elseif(Tier == TIER_GOLD) {
+        Player:msg("{!yellow [" + BankName + "]} {" + getTierColor(TIER_GOLD) + " Congratulations! You are now a Gold member!}")
+    }
+    elseif(Tier == TIER_DIAMOND) {
+        Player:msg("{!yellow [" + BankName + "]} {" + getTierColor(TIER_DIAMOND) + " Congratulations! You are now a Diamond member!}")
+    }
+    elseif(Tier == TIER_RUBY) {
+        Player:msg("{!yellow [" + BankName + "]} {" + getTierColor(TIER_RUBY) + " Congratulations! You are now a Diamond member!}")
+    }
+}
+
+function void bankReset() {
+    stopAllTimers()
+    CurrentPlayer = _NO_ENTITY
+    memberHomeScreen(Elements, EGP,"default",function() {
+        membership(Elements, EGP)
+    })
+}
+
+function void cmdAdmin(Command:string, Args:array) {
+    switch(Command) {
+        case "GIVE",
+            if(Args:count() >= 2) {
+                let Player = Args[1, string]:findPlayer()
+                if(Player:isValid()) {
+                    let CurrentTier = getMemberDataTier(Player, MemberData)
+                    let Tier = Args[2, string]:toNumber()
+                    if(Tier > CurrentTier && Tier <= 4 && Tier > 0) {
+                        addMembershipData(Player,Tier)
+                        print("{! [" + BankName + "] } {" + getTierColor(Tier) + " " + Player:name():upper() + " has been given " + getTierName(Tier):upper() + " tier.}")
+                    }
+                    elseif(Tier <= CurrentTier && Tier <= 4 && Tier > 0) {
+                        print("{! [" + BankName + "] } " + Player:name():upper() + " already has " + getTierName(CurrentTier) + " tier.")
+                    }
+                    else { print("{red [" + BankName + "] } {! INVALID TIER }") }
+                }
+                else { print("{red [" + BankName + "] } {! INVALID PLAYER }") }
+            }
+        break
+    }
+}
+
+if(userInput(User) && User:isValid() && (User == CurrentPlayer || CurrentPlayer == _NO_ENTITY)) {
+    CurrentPlayer = User
+    distanceFromEntity(CurrentPlayer, EGP:entity(), 100, function() {
+        bankReset() 
+    })
+    
+    if(!timerExists(CurrentPlayer:steamID64())) { 
+        let Cursor = cursorObj(array("Ellipse28", "CopperButton", "SilverButton", "GoldButton", "DiamondButton"))
+        switch (Cursor) {
+            case "Ellipse28",
+                EGP:entity():soundPlay(0,2,"doors/door_latch1.wav")
+                moveTo(Elements, "Rectangle58", 4, vec2(0,-1000))
+                moveTo(Elements, "Rectangle59", 4, vec2(0,1000))
+                timer(5,function() { removeOffscreenObjects(Elements, EGP) })
+                
+            break,
+            case "CopperButton",
+                if(!timerExists(CurrentPlayer:steamID64())) { timer(CurrentPlayer:steamID64(),1,function(){}) }
+                let CurrentTier = getMemberDataTier(CurrentPlayer, MemberData)
+                CurrentPlayer:msg("{!yellow [" + BankName + "]} {yellow You already have " + getTierName(CurrentTier) + " membership!}")
+                EGP:entity():soundPlay(0,2,"buttons/combine_button1.wav")
+            break,
+            case "SilverButton",
+                if(!timerExists(CurrentPlayer:steamID64())) { timer(CurrentPlayer:steamID64(),1,function(){}) }
+                let CurrentTier = getMemberDataTier(CurrentPlayer, MemberData)
+                if(CurrentTier >= TIER_SILVER) {
+                    CurrentPlayer:msg("{!yellow [" + BankName + "]} {yellow You already have " + getTierName(CurrentTier) + " membership!}")
+                    EGP:entity():soundPlay(0,2,"buttons/combine_button1.wav")
+                }
+                else {
+                    moneyRequest(CurrentPlayer, getTierCost(TIER_SILVER), 5, "BUY SILVER TIER TODAY")
+                }
+            break,
+            case "GoldButton",
+                if(!timerExists(CurrentPlayer:steamID64())) { timer(CurrentPlayer:steamID64(),1,function(){}) }
+                let CurrentTier = getMemberDataTier(CurrentPlayer, MemberData)
+                if(CurrentTier >= TIER_GOLD) {
+                    CurrentPlayer:msg("{!yellow [" + BankName + "]} {yellow You already have " + getTierName(CurrentTier) + " membership!}")
+                    EGP:entity():soundPlay(0,2,"buttons/combine_button1.wav")
+                }
+                else {
+                    moneyRequest(CurrentPlayer, getTierCost(TIER_GOLD), 5, "BUY GOLD TIER TODAY")
+                }
+            break,
+            case "DiamondButton",
+                if(!timerExists(CurrentPlayer:steamID64())) { timer(CurrentPlayer:steamID64(),1,function(){}) }
+                let CurrentTier = getMemberDataTier(CurrentPlayer, MemberData)
+                if(CurrentTier >= TIER_DIAMOND) {
+                    CurrentPlayer:msg("{!yellow [" + BankName + "]} {yellow You already have " + getTierName(CurrentTier) + " membership!}")
+                    EGP:entity():soundPlay(0,2,"buttons/combine_button1.wav")
+                }
+                else {
+                    moneyRequest(CurrentPlayer, getTierCost(TIER_DIAMOND), 5, "BUY DIAMOND TIER TODAY")
+                }
+            break,
+        }
+    }
+    else {
+        if(CurrentPlayer:steamID64() == "76561198080574798") {
+            CurrentPlayer:msg("{! [" + BankName + "]} {red " + CurrentPlayer:name() + "... you... you are poor, this message was made just for you, no one else will see this. hope you feel} {* special} :horse:")
+        }
+        else {
+            CurrentPlayer:msg("{! [" + BankName + "]} {red INSUFFICIENT FUNDS.} You can try again in: {blue " + formatTimeInSeconds(timerTimeLeft(CurrentPlayer:steamID64())) + "}")
+        }
+    }
+}
+
+if(moneyClk()) {
+    if(moneyClkAmount() == getTierCost(TIER_DIAMOND)) {
+        addMembershipData(CurrentPlayer, TIER_DIAMOND)
+        EGP:entity():soundPlay(0,2,"zld/zld_cash01.wav")
+    }
+    elseif(moneyClkAmount() == getTierCost(TIER_GOLD)) {
+        addMembershipData(CurrentPlayer, TIER_GOLD)
+        EGP:entity():soundPlay(0,2,"zld/zld_cash01.wav")
+    }
+    elseif(moneyClkAmount() == getTierCost(TIER_SILVER)) {
+        addMembershipData(CurrentPlayer, TIER_SILVER)
+        EGP:entity():soundPlay(0,2,"zld/zld_cash01.wav")
+    }
+    else {
+        EGP:entity():soundPlay(0,2,"buttons/button10.wav")
+        print("{! invalid payment amount }")
+        print(CurrentPlayer:name():upper() + " Has been refunded {green " + moneyClkAmount() + "}")
+        CurrentPlayer:msg("{!yellow [" + BankName + "]} {! INVALID PAYMENT AMOUNT, YOU HAVE BEEN REFUNDED} {green " + moneyClkAmount() + "$} PLEASE TRY AGAIN")
+        moneyGive(CurrentPlayer, moneyClkAmount())
+    }
+}
+
+if(moneyNoClk() || moneyTimeout()) {
+    CurrentPlayer:msg("{!yellow [" + BankName + "]} {red PAYMENT FAILED }")
+}
+
+event remote(Sender:entity, Player:entity, Payload:table) {
+    if (Player == owner()) { # Make sure this is coming from your e2 chip not someone else's
+        if (E2Chips:findEntity(Sender)) { # This would be triggered when a receiver chip requests data
+            Sender:sendRemoteEvent(MemberData)
+        }
+        else { # This would be triggered when a receiver chip is placed down
+            E2Chips:pushEntity(Sender)
+            print("E2 Chip initialized with Banker E2 Main: " + Sender:id())
+        }
+    }
+}
+
+event fileLoaded(File:string, Data:string) {
+    if(File == "banker_memberdata.txt") {
+        if(Data != "") {
+            MemberData = jsonDecode(Data)
+            print("Member data loaded with " + MemberData:count() + " entries")
+        } else {
+            print("Empty member data file, creating new table")
+            MemberData = table()
+        }
+    }
+}
+
+event chat(Player:entity, Message:string, _:number) {
+    if(Player == owner() && Message:sub(1, 1) == "*") {
+        let Args = Message:explode(" ")
+        let Command = Args[1, string]:upper()
+        Args:remove(1)
+        cmdAdmin(Command:sub(2), Args)
+        hideChat(1)
+    }
+}

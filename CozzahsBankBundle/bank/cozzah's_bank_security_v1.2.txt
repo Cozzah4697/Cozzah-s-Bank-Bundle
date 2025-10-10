@@ -1,0 +1,919 @@
+@name Cozzah's bank security v1.2
+
+@inputs [Door1 Door2 Door3 PanicButton]:wirelink
+@inputs [Door4 Door5 Door6 Door7 Door8 Door9 Door10 Door11 Door12 Door13]:wirelink
+@inputs [Min1 Max1 Min2 Max2]:entity
+@inputs [Keypad]:number
+
+@outputs [AlarmActive TimeLeft]:number
+
+@persist [Guards Guests DoorAssignments GuardDoors]:table
+@persist [E2Chips Doors]:array
+@persist [Sound Location Material]:string
+@persist [AlarmActive PanicTriggered Salary PanicTimer Code FloorMode]:number
+
+#include "CozzahsBankBundle/includes/functions"
+#include "CozzahsBankBundle/includes/ui_security"
+#include "CozzahsBankBundle/includes/membership_configuration"
+
+#customers, keypad unsure if working - LIKELY WORKING, NOT TESTED
+
+#add adddoor function for all guards - DONE NOT TESTED
+#guests can open all printer doors - FIXED NOT TESTED
+
+if(first() || dupefinished()) {
+    Code = 1234
+    Salary = 900000
+    let Timer = 600 #10mins
+    Sound = "ambient/alarms/city_firebell_loop1.wav"
+    Material = "lights/white"
+    Location = "across from export Manager"
+    FloorMode = 1
+    
+    E2Chips = array()
+    Guards = table()
+    Guests = table()
+    DoorAssignments = table()
+    GuardDoors = table()
+    
+    AlarmActive = 0
+    Keypad = 0
+    
+    PanicTimer = 1
+    PanicTriggered = 0
+    
+    EGP:egpClear()
+    EGP:egpDrawTopLeft(1)
+    EGPRaid:egpClear()
+    EGPRaid:egpDrawTopLeft(1)
+    
+    Doors = array()
+    
+    timer(Timer,0,function() {
+        foreach(SteamID:string, _:number = Guards) {
+            let Guard = SteamID:findPlayer()
+            if(Guard:isValid()) {
+                moneyGive(Guard, Salary/6)
+                Guard:msg("{!yellow [" + BankName + "] } {blue Thank you for protecting} {yellow " + BankName + "} {blue you have been paid } {green " + formatNumber(Salary/6) + "}. Next payment in {yellow " + formatTimeInSeconds(Timer) + "}")
+            }
+        }
+    })
+}
+
+# Function to assign a player to a specific door
+function void assignPlayerToDoor(DoorID:number, PlayerSteamID:string) {
+    DoorAssignments[DoorID, string] = PlayerSteamID
+}
+
+# Function to check if a player is assigned to a door
+function number isPlayerAssignedToDoor(DoorID:number, PlayerSteamID:string) {
+    return DoorAssignments[DoorID, string] == PlayerSteamID
+}
+
+# Function to remove assignment from a door
+function void removePlayerFromDoor(DoorID:number) {
+    DoorAssignments[DoorID, string] = ""
+}
+
+function void startAlarm() {
+    if(!AlarmActive) {
+        AlarmActive = 1
+        entity():soundPlay(2,0,Sound)
+        
+        if(!timerExists("msg")) {
+            timer("msg",10,function(){})
+            owner():msg("{!yellow [" + BankName + "]} {! UNAUTHORISED PLAYER DETECTED AT " + BankName + "}")
+            if(Guards:count() > 0) {
+                foreach(SteamID:string, _:number = Guards) {
+                    let Player = SteamID:findPlayer()
+                    if(Player:isValid()) {
+                        Player:msg("{!yellow [" + BankName + "]} {! UNAUTHORISED PLAYER DETECTED AT " + BankName + "}")
+                    }
+                }
+            }
+        }
+    }
+}
+
+function void stopAlarm() {
+    if(AlarmActive) {
+        AlarmActive = 0
+        soundStop(2)
+    }
+}
+
+function void removeGuest(Player:entity) {
+    if(Player:isValid()) {
+        let SteamID = Player:steamID()
+        if(Guests[SteamID, number]) {
+            Guests:remove(SteamID)
+            stoptimer(Player:steamID64())
+            owner():msg("{!yellow [" + BankName + "]} {red " + Player:name():upper() + "} has been removed as a {green guest}.")
+            Player:msg("{!yellow [" + BankName + "]} {red Your guest pass has expired for } {yellow " + BankName:lower() + ".}")
+        }
+        else { owner():msg("{!yellow [" + BankName + "]} {yellow " + Player:name():upper() + "} is not a guest.") }
+    }
+}
+function void addGuest(Player:entity) {
+    if(Player:isValid()) {
+        let SteamID = Player:steamID()
+        if(!Guests[SteamID, number]) {
+            Guests[SteamID, number] = 1
+            owner():msg("{!yellow [" + BankName + "]} {green " + Player:name():upper() + "} has been added as a {green Guest}.")
+            Player:msg("{!yellow [" + BankName + "]} {green " + owner():name():upper() + "} has given you Given you Guest perms. Press {green 'E'} to open doors.")
+        } 
+        else { owner():msg("{!yellow [" + BankName + "]} {yellow " + Player:name():upper() + "} is already a guard.") }
+    }
+}
+
+function void addGuestTime(Player:entity, Time:number) {
+    let Timemin = Time * 60
+    if(Player:isValid()) {
+        let SteamID = Player:steamID()
+        if(!Guests[SteamID, number]) {
+            Guests[SteamID, number] = 1
+            owner():msg("{!yellow [" + BankName + "]} {green " + Player:name():upper() + "} has been added as a {green Guest}.")
+            Player:msg("{!yellow [" + BankName + "]} {green " + owner():name():upper() + "} has given you Given you Guest perms for " + formatTimeInSeconds(Timemin) + ". Press {green 'E'} to open doors.")
+            timer(Player:steamID64(),Timemin,function() { removeGuest(Player) })
+        } 
+        else { owner():msg("{!yellow [" + BankName + "]} {yellow " + Player:name():upper() + "} is already a guard.") }
+    }
+}
+
+## can i just do if exists
+function void addGuard(Player:entity) {
+    if(Player:isValid()) {
+        let SteamID = Player:steamID()
+        if(!Guards[SteamID, number]) {
+            Guards[SteamID, number] = 1
+            owner():msg("{!yellow [" + BankName + "]} {green " + Player:name():upper() + "} has been added as a guard.")
+            Player:msg("{!yellow [" + BankName + "]} {!yellow CONGRATULATIONS!! } {green " + Player:name():upper() + "} You have been hired as a guard for " + BankName:lower() + " at {green " + formatNumber(Salary) + "/h }. Press {green 'E'} to open doors.")
+            guardScreen(EGP,Salary,Guards)
+            EGP:entity():soundPlay(0,12,"porky/donate2.mp3")
+        }
+        else {
+            owner():msg("{!yellow [" + BankName + "]} {yellow " + Player:name():upper() + "} is already a guard.")
+        }
+    }
+}
+
+function void removeGuard(Player:entity) {
+    if(Player:isValid()) {
+        let SteamID = Player:steamID()
+        if(Guards[SteamID, number]) {
+            Guards:remove(SteamID)
+            guardScreen(EGP,Salary,Guards)
+            timer(0.5,function() {
+                if(Player:team():teamName() == "Security Guard" || Player:team():teamName():find("Mercenary")) {
+                    moneyGive(Player, Salary)
+                    owner():msg("{!yellow [" + BankName + "]} {red " + Player:name():upper() + "} has been removed as a guard.")
+                    Player:msg("{!yellow [" + BankName + "]} {red We are sorry to see you go. You have been fired as a guard for} {yellow " + BankName:lower() + ".}")
+                    Player:msg("{!yellow [" + BankName + "]} {blue You have been paid your final pay chack of } {green " + formatNumber(Salary) + "} {blue as a guard at} {yellow " + BankName:lower() + " Bank}")
+                }
+                else {
+                    owner():msg("{!yellow [" + BankName + "]} {red " + Player:name():upper() + "} is no longer authorized to work as a guard.")
+                    Player:msg("{!yellow [" + BankName + "]} {red Your job is not authorized to work as a guard for} {yellow " + BankName:lower() + ".}")
+                }
+            })
+        }
+        else {
+            owner():msg("{!yellow [" + BankName + "]} {yellow " + Player:name():upper() + "} is not a guard.")
+        }
+    }
+}
+
+function number hasLockpick(Player:entity) {
+    if(Player:weapon():toString():upper():find("LOCKPICK") || Player:weapon():toString():upper():find("CRACKER")) { return 1 }
+    return 0
+}
+
+function void displayPlayerHelp() {
+    # Send header
+    owner():msg("{#FFBF00 === PLAYER COMMANDS ===}")
+    
+    # Player commands
+    owner():msg("{#FFBF00 !help} - Shows this player help message")
+    owner():msg("{#FFBF00 !add 'player'} - Adds player as a guest")
+    owner():msg("{#FFBF00 !add 'player' 'min'} - Adds player as a guest for specified minutes")
+    owner():msg("{#FFBF00 !remove 'player'} - Removes player as a guest")
+    owner():msg("{#FFBF00 !guests} - Shows list of current guests")
+    
+    # Send footer
+    owner():msg("{#FFBF00 =======================}")
+}
+
+function void displayAdminHelp() {
+    # Send header
+    owner():msg("{#FFBF00 === ADMIN COMMANDS ===}")
+    
+    # Admin commands
+    owner():msg("{#FFBF00 *help} - Shows this admin help message")
+    owner():msg("{#FFBF00 *resetpanic} - Resets panic buttons and closes all toggle doors")
+    owner():msg("{#FFBF00 *add 'player'} - Adds player as a guard")
+    owner():msg("{#FFBF00 *remove 'player'} - Removes player as a guard")
+    owner():msg("{#FFBF00 *guards} - Shows list of current guards")
+    owner():msg("{#FFBF00 *set 'amount'} - Sets guard salary")
+    owner():msg("{#FFBF00 *update} - Manually updates guard table for " + BankName:lower() + " bank security E2")
+    owner():msg("{#FFBF00 *adddoor 'player'} - Assigns player to door (look at door first)")
+    owner():msg("{#FFBF00 *deldoor} - Removes player assignment from door (look at door first)")
+    owner():msg("{#FFBF00 *doors} - Shows list of door assignments")
+    owner():msg("{#FFBF00 *addguarddoor} - Makes door accessible to all guards (look at door first)")
+    owner():msg("{#FFBF00 *delguarddoor} - Removes guard access from door (look at door first)")
+    
+    # Send footer
+    owner():msg("{#FFBF00 =======================}")
+}
+
+function void cmdPlayer(Command:string, Args:array) {
+    switch(Command) {
+        case "HELP",
+            displayPlayerHelp()
+        break
+        case "ADD",
+            if(Args:count() >= 2) {
+                let PlayerName = Args[1, string]
+                let Time = Args[2, string]:toNumber()
+                let PlayerFound = PlayerName:findPlayer()
+                if(PlayerFound:isValid()) {
+                    addGuestTime(PlayerFound, Time)
+                }
+                else{ owner():msg("{!yellow [" + BankName + "]} {red Player not found.}") }
+            }
+            elseif(Args:count() >= 1) {
+                let PlayerName = Args[1, string]
+                let PlayerFound = PlayerName:findPlayer()
+                if(PlayerFound:isValid()) {
+                    addGuest(PlayerFound)
+                }
+                else{ owner():msg("{!yellow [" + BankName + "]} {red Player not found.}") }
+            }
+            else { owner():msg("{!yellow [" + BankName + "]} {red Usage: !add 'player' OR !add 'player' 'min:number'}") }
+        break
+        case "REMOVE",
+            if(Args:count() >= 1) {
+                let PlayerName = Args[1, string]
+                let PlayerFound = PlayerName:findPlayer()
+                if(PlayerFound:isValid()) {
+                    removeGuest(PlayerFound)
+                }
+                else { owner():msg("{!yellow [" + BankName + "]} {red Player not found.}") }
+            } 
+            else { owner():msg("{!yellow [" + BankName + "]} {red Usage: !remove 'player'}") }
+        break
+        case "GUESTS",
+            let GuestCount = 0
+            owner():msg("{#FFBF00 === CURRENT GUESTS ===}")
+            foreach(SteamID:string, _:number = Guests) {
+                let Guest = SteamID:findPlayer()
+                if(Guest:isValid()) {
+                    owner():msg("{#FFBF00 " + Guest:name():upper() + "} - {green " + formatTimeInSeconds(timerTimeLeft(Guest:steamID64())) + "}")
+                    GuestCount++
+                }
+            }
+            if(GuestCount == 0) { owner():msg("{#FFBF00 No guests currently added.}") }
+            owner():msg("{#FFBF00 ======================}")
+        break
+    }
+}
+
+function void cmdAdmin(Command:string, Args:array) {
+    switch(Command) {
+        case "HELP",
+            displayAdminHelp()
+        break
+        case "RESETPANIC",
+            PanicTriggered = 0
+            PanicTimer = 1
+            foreach (_:number, Door:wirelink = Doors) {
+                if(Door["FadeActive",number]) { Door["Fade", number] = 0 }
+                stoptimer("raid" + Door:entity():id())
+            }
+        break
+        case "SET",
+            if(Args:count() >= 1) {
+                let NewSalary = Args[1, string]:toNumber()
+                let Min = 50000
+                if(NewSalary >= Min) {
+                    if(NewSalary > Salary) {
+                        foreach(SteamID:string, _:number = Guards) {
+                            let Guard = SteamID:findPlayer()
+                            if(Guard:isValid()) {
+                                Guard:msg("{! [" + BankName + " ALERT]} {!yellow CONGRATULATIONS!! } {green " + Guard:name():upper() + "} you have got a pay raise. Your new pay is {green " + formatNumber(NewSalary) + "/h}")
+                            }
+                        }
+                    }
+                    else {
+                        foreach(SteamID:string, _:number = Guards) {
+                            let Guard = SteamID:findPlayer()
+                            if(Guard:isValid()) {
+                                Guard:msg("{! [" + BankName + " ALERT]} {red Sorry} {yellow " + Guard:name():upper() + "} {red your boss is not nice and has given you a pay cut. Your new pay is }{green " + formatNumber(NewSalary) + "/h}")
+                            }
+                        }
+                    }
+                    Salary = NewSalary
+                    guardScreen(EGP,Salary,Guards)
+                    print("Salary has been set to {green " + formatNumber(Salary) + "/h}")
+                }
+                else{ print("Salary can not be less than {green " + formatNumber(Min) + "/h}") }
+            }
+            else { print("Salary is currently set to {green " + formatNumber(Salary) + "/h}") }
+        break
+        case "ADD",
+            if(Args:count() >= 1) {
+                let PlayerName = Args[1, string]
+                let PlayerFound = PlayerName:findPlayer()
+                if(PlayerFound:isValid()) {
+                    if(PlayerFound:team():teamName() == "Security Guard" || PlayerFound:team():teamName():find("Mercenary") || PlayerFound:team():teamName():find("MERCENARY")) {
+                        addGuard(PlayerFound)
+                    }
+                    else{ owner():msg("{!yellow [" + BankName + "]} {blue " + PlayerFound:name():upper() + "} {red is not a} {yellow Security Guard or Mercenary.}") }
+                }
+                else {
+                    owner():msg("{!yellow [" + BankName + "]} {red Player not found.}")
+                }
+            }
+            else {
+                owner():msg("{!yellow [" + BankName + "]} {red Usage: *add 'player'}")
+            }
+        break
+        case "REMOVE",
+            if(Args:count() >= 1) {
+                let PlayerName = Args[1, string]
+                let PlayerFound = PlayerName:findPlayer()
+                if(PlayerFound:isValid()) {
+                    removeGuard(PlayerFound)
+                } else {
+                    owner():msg("{!yellow [" + BankName + "]} {red Player not found.}")
+                }
+            } else {
+                owner():msg("{!yellow [" + BankName + "]} {red Usage: *remove 'player'}")
+            }
+        break
+        case "GUARDS",
+            let GuardCount = 0
+            owner():msg("{#FFBF00 === CURRENT GUARDS ===}")
+            foreach(SteamID:string, _:number = Guards) {
+                let Guard = SteamID:findPlayer()
+                if(Guard:isValid()) {
+                    owner():msg("{#FFBF00 " + Guard:name():upper() + "}")
+                    GuardCount++
+                }
+            }
+            if(GuardCount == 0) {
+                owner():msg("{#FFBF00 No guards currently added.}")
+            }
+            owner():msg("{#FFBF00 ======================}")
+        break
+        case "UPDATE",
+            guardScreen(EGP,Salary,Guards)
+            print("Guard screen updated")
+        break
+        case "ADDDOOR",
+            if(Args:count() >= 1) {
+                let PlayerName = Args[1, string]
+                let PlayerFound = PlayerName:findPlayer()
+                if(PlayerFound:isValid()) {
+                    let AimEntity = owner():aimEntity()
+                    let DoorFound = 0
+                    let DoorIndex = 0
+                    foreach (I:number, Door:wirelink = Doors) {
+                        if(Door:entity() == AimEntity) {
+                            DoorFound = 1
+                            DoorIndex = I
+                            break
+                        }
+                    }
+                    if(DoorFound) {
+                        let DoorID = Doors[DoorIndex, wirelink]:entity():id()
+                        assignPlayerToDoor(DoorID, PlayerFound:steamID())
+                        owner():msg("{!yellow [" + BankName + "]} {green " + PlayerFound:name():upper() + "} {blue has been assigned to door: " + DoorID + "}")
+                        PlayerFound:msg("{!yellow [" + BankName + "]} {green YOU} {blue have been added to door: " + DoorID + "}. Press {green 'E'} to open doors.")
+                        PlayerFound:msg("Keypad Code: {green " + Code + "}")
+                    }
+                    else {
+                        owner():msg("{!yellow [" + BankName + "]} {red You are not looking at a valid door}")
+                    }
+                }
+                else {
+                    owner():msg("{!yellow [" + BankName + "]} {red Player not found.}")
+                }
+            }
+            else {
+                owner():msg("{!yellow [" + BankName + "]} {red Usage: *assigndoor 'player' (look at door first)}")
+            }
+        break
+        case "DELDOOR",
+            let AimEntity = owner():aimEntity()
+            let DoorFound = 0
+            let DoorIndex = 0
+            foreach (I:number, Door:wirelink = Doors) {
+                if(Door:entity() == AimEntity) {
+                    DoorFound = 1
+                    DoorIndex = I
+                    break
+                }
+            }
+            if(DoorFound) {
+                let DoorID = Doors[DoorIndex, wirelink]:entity():id()
+                let AssignedSteamID = DoorAssignments[DoorID, string]
+                let Player = AssignedSteamID:findPlayer()
+                
+                removePlayerFromDoor(DoorID)
+                
+                if(Player:isValid()) { 
+                    Player:msg("{!yellow [" + BankName + "]} {green YOU} {! have been removed from door: " + DoorID + "}") 
+                }
+                owner():msg("{!yellow [" + BankName + "]} {green " + Player:name():upper() + " was removed from door: " + DoorID + "}")
+            }
+            else {
+                owner():msg("{!yellow [" + BankName + "]} {red You are not looking at a valid door}")
+            }
+        break
+        case "DOORS",
+            owner():msg("{#FFBF00 === DOOR ASSIGNMENTS ===}")
+            let AssignmentCount = 0
+            for(I = 1, Doors:count()) {
+                let DoorID = Doors[I, wirelink]:entity():id()
+                let AssignedSteamID = DoorAssignments[DoorID, string]
+                if(AssignedSteamID != "") {
+                    let AssignedPlayer = AssignedSteamID:findPlayer()
+                    if(AssignedPlayer:isValid()) {
+                        owner():msg("{#FFBF00 Door #" + DoorID + ": " + AssignedPlayer:name():upper() + "}")
+                    }
+                    else {
+                        owner():msg("{#FFBF00 Door #" + DoorID + ": " + AssignedSteamID + " (offline)}")
+                    }
+                    AssignmentCount++
+                }
+            }
+            if(AssignmentCount == 0) {
+                owner():msg("{#FFBF00 No door assignments currently set.}")
+            }
+            owner():msg("{#FFBF00 =========================}")
+        break
+        case "ADDGUARDDOOR",
+            let AimEntity = owner():aimEntity()
+            let DoorFound = 0
+            let DoorIndex = 0
+            foreach (I:number, Door:wirelink = Doors) {
+                if(Door:entity() == AimEntity) {
+                    DoorFound = 1
+                    DoorIndex = I
+                    break
+                }
+            }
+            if(DoorFound) {
+                let DoorID = Doors[DoorIndex, wirelink]:entity():id()
+                GuardDoors[DoorID, number] = 1
+                owner():msg("{!yellow [" + BankName + "]} {green Door " + DoorID + " is now a guard door (all guards have access)}")
+            }
+            else {
+                owner():msg("{!yellow [" + BankName + "]} {red You are not looking at a valid door}")
+            }
+        break
+        case "DELGUARDDOOR",
+            let AimEntity = owner():aimEntity()
+            let DoorFound = 0
+            let DoorIndex = 0
+            foreach (I:number, Door:wirelink = Doors) {
+                if(Door:entity() == AimEntity) {
+                    DoorFound = 1
+                    DoorIndex = I
+                    break
+                }
+            }
+            if(DoorFound) {
+                let DoorID = Doors[DoorIndex, wirelink]:entity():id()
+                GuardDoors:remove(DoorID)
+                owner():msg("{!yellow [" + BankName + "]} {red Door " + DoorID + " is no longer a guard door}")
+            }
+            else {
+                owner():msg("{!yellow [" + BankName + "]} {red You are not looking at a valid door}")
+            }
+        break
+    }
+}
+
+if(first() || dupefinished()) {
+    findIncludeClass("player")
+    timer("AuthCheck",1,0,function() {
+        local UnauthorizedDetected = 0
+        
+        # Only proceed if we can query - don't check anything if throttled
+        if(!findCanQuery()) {
+            # Can't query yet, skip this tick entirely
+            print("{! Can't query, skipped tick}")
+            return
+        }
+        
+        # Printer Doors - Set colors based on customer proximity
+        foreach (_:number, Door:wirelink = Doors) {
+            if (Door:entity():isValid()) {
+                Door:entity():setColor(255, 0, 0, 100)
+            }
+        }
+        
+        # Do a single find operation to get all players in the area
+        if(Min1:isValid() && Max1:isValid()) {
+            findInBox(Min1:pos(), Max1:pos())
+            let Players = findToArray()
+            
+            if(Players:count() > 0) {
+                foreach(_:number, Player:entity = Players) {
+                    # Skip invalid players
+                    if(!Player:isValid() || !Player:isAlive() || Player:inNoclip() || Player:name() == "") { continue }
+                    
+                    # Skip players who aren't assigned to any door (not customers)
+                    let IsCustomer = 0
+                    foreach(_:number, Door:wirelink = Doors) {
+                        if(!Door:entity():isValid()) { continue }
+                        if(isPlayerAssignedToDoor(Door:entity():id(), Player:steamID())) {
+                            IsCustomer = 1
+                            break
+                        }
+                    }
+                    if(!IsCustomer) { continue }
+                    
+                    # Player is a customer - check their distance to each door
+                    let PlayerPos = Player:pos()
+                    foreach (_:number, Door:wirelink = Doors) {
+                        if (!Door:entity():isValid()) { continue }
+                        
+                        let DoorID = Door:entity():id()
+                        let DoorPos = Door:entity():pos()
+                        let Distance = PlayerPos:distance(DoorPos)
+                        
+                        # If this player is assigned to this door AND within 150 units, turn door green
+                        if(isPlayerAssignedToDoor(DoorID, Player:steamID()) && Distance <= 150) {
+                            Door:entity():setColor(0, 255, 0, 100)
+                        }
+                    }
+                }
+            }
+        }
+        
+        # MIN/MAXCustomer and MIN1/MAX1 with floor detection
+        if(Min1:isValid() && Max1:isValid()) {
+            # Calculate midpoint Y coordinate (used to split the area into two floors)
+            let MinY = Min1:pos():y()
+            let Max1Y = Max1:pos():y()
+            let MidpointY = MinY + ((Max1Y - MinY) / 2)
+        
+            # Find all players in the overall customer zone
+            findInBox(Min1:pos(), Max1:pos())
+            let Box = findToArray()
+            let Allowed3 = 0
+        
+            # Check if theres an assigned customer present
+            foreach(J:number, User:entity = Box) {
+                let DoorID = Doors[J, wirelink]:entity():id()
+                let AssignedSteamID = DoorAssignments[DoorID, string]
+                if(AssignedSteamID == User:steamID() && !Guards:exists(AssignedSteamID) && !Guests:exists(AssignedSteamID) && User:name() != "") {
+                    Allowed3 = 1
+                    break
+                }
+            }
+        
+            # Skip further logic if no players found
+            if(Box:count() == 0) { continue }
+        
+            # Main player check loop
+            foreach(_:number, Player:entity = Box) {
+                if(!Player:isValid() || !Player:isAlive() || Player:inNoclip() || Player:name() == "") { continue }
+                if(hasLockpick(Player)) { UnauthorizedDetected = 1, break }
+        
+                let PlayerY = Player:pos():y()
+                let IsCustomerArea = 0
+        
+                # Determine which floor is for customers based on FloorMode
+                if(FloorMode == 0) {
+                    # Single-floor mode: entire area acts as customer floor
+                    IsCustomerArea = 1
+                }
+                elseif(FloorMode == 1) {
+                    # Customers on bottom floor
+                    if(PlayerY < MidpointY) { IsCustomerArea = 1 }
+                }
+                elseif(FloorMode == 2) {
+                    # Customers on top floor (inverted check)
+                    if(PlayerY > MidpointY) { IsCustomerArea = 1 }
+                }
+        
+                # Apply access logic depending on whether this is the customer area
+                if(IsCustomerArea) {
+                    # CUSTOMER AREA LOGIC (same as bottom-floor logic)
+                    if((!Guards:exists(Player:steamID()) && !Guests:exists(Player:steamID()) && Player != owner() && (!Allowed3 || !timerExists("Keypad")))) {
+                        UnauthorizedDetected = 1
+                    }
+                    elseif(Allowed3 && timerExists("Keypad")) {
+                        if(!timerExists("Allowed Player")) {
+                            timer("Allowed Player",10,function() {})
+                            print("{!yellow [" + BankName + "]} {!orange Allowed player is inside.}")
+                            if(Guards:count() > 0) {
+                                foreach(SteamID:string, _:number = Guards) {
+                                    let GPlayer = SteamID:findPlayer()
+                                    if(GPlayer:isValid()) {
+                                        GPlayer:msg("{!yellow [" + BankName + "]} {!orange Allowed player is inside.}")
+                                    }
+                                }
+                            }
+                        }
+                        UnauthorizedDetected = 2
+                        break
+                    }
+                }
+                else {
+                    # RESTRICTED AREA LOGIC (guards, guests, owner only)
+                    if(!Guards:exists(Player:steamID()) && !Guests:exists(Player:steamID()) && Player != owner()) {
+                        UnauthorizedDetected = 1
+                        break
+                    }
+                }
+            }
+        }
+        
+        # MIN2/MAX2
+        if(Min2:isValid() && Max2:isValid()) {
+            findInBox(Min2:pos(), Max2:pos())
+            let Box = findToArray()
+            if (Box:count() > 0){
+                foreach(_:number, Player:entity = Box) {
+                    if (!Player:isValid() || !Player:isAlive() || Player:inNoclip() || Player:name() == "" ){continue}
+                    elseif(!Guards:exists(Player:steamID()) && !Guests:exists(Player:steamID()) && Player != owner()) {
+                        UnauthorizedDetected = 1
+                        break
+                    }
+                }
+            }
+        }
+        
+        # Panic Button Check
+        if(PanicButton["Out", number] >= 1 && !PanicTriggered) {
+            let Entity = PanicButton:entity()
+            if(PanicButton["Out", number] >= 1) {
+                if(PanicTimer < 3) {
+                    Entity:soundPlay(randint(01,255),1,"buttons/button24.wav")
+                    PanicTimer++
+                }
+                else {
+                    stoptimer("Panic")
+                    Entity:soundPlay(0,2,"bot/i_could_use_some_help_over_here.wav")
+                    PanicTriggered = 1
+                    owner():msg("{!yellow [" + BankName + "]} {! PANIC ALARM TRIGGERED}")
+                    concmd("say /000 PANIC ALARM TRIGGERED AT " + BankName + ", WE ARE BEING RAIDED " + Location:upper() + ".")
+                }         
+            }
+            else {
+                stoptimer("Panic")
+            }
+        }
+        
+        # Alarm and UI Update
+        if(UnauthorizedDetected == 1) {
+            startAlarm()
+            box(EGPRaid, Elements:get("RaidBackground"), table("x"=-11.0, "y"=217.0, "w"=216.0, "h"=93.0, "r"=42, "g"=42, "b"=42, "radius"=9.0))
+            if(EGPRaid:egpColor(Elements:get("RaidBackground")) == vec(30,178,0)) {
+                box(EGPRaid, Elements:get("RaidForeground"), table("x"=-5.0, "y"=223.0, "w"=205.0, "h"=81.0, "r"=100, "g"=20, "b"=0, "radius"=5.0))
+            }
+            else {
+                box(EGPRaid, Elements:get("RaidForeground"), table("x"=-5.0, "y"=223.0, "w"=205.0, "h"=81.0, "r"=178, "g"=30, "b"=0, "radius"=5.0))
+            }
+            text(EGPRaid, Elements:get("Text"), table("text"="RAID", "x"=0.0, "y"=223.0, "w"= 200.0, "h"=81.0, "r"=255, "g"=255, "b"=255, "size"=43, "halign"=1, "valign"=1))
+        }
+        elseif(UnauthorizedDetected == 2) {
+            box(EGPRaid, Elements:get("RaidBackground"), table("x"=-11.0, "y"=217.0, "w"=216.0, "h"=93.0, "r"=42, "g"=42, "b"=42, "radius"=9.0))
+            box(EGPRaid, Elements:get("RaidForeground"), table("x"=-5.0, "y"=223.0, "w"=205.0, "h"=81.0, "r"=255, "g"=150, "b"=0, "radius"=5.0))
+            text(EGPRaid, Elements:get("Text"), table("text"="ALLOWED", "x"=0.0, "y"=223.0, "w"= 200.0, "h"=81.0, "r"=255, "g"=255, "b"=255, "size"=43, "halign"=1, "valign"=1))
+        }
+        else {
+            stopAlarm()
+            box(EGPRaid, Elements:get("RaidBackground"), table("x"=-11.0, "y"=217.0, "w"=216.0, "h"=93.0, "r"=42, "g"=42, "b"=42, "radius"=9.0))
+            box(EGPRaid, Elements:get("RaidForeground"), table("x"=-5.0, "y"=223.0, "w"=205.0, "h"=81.0, "r"=30, "g"=178, "b"=0, "radius"=5.0))
+            text(EGPRaid, Elements:get("Text"), table("text"="SAFE", "x"=0.0, "y"=223.0, "w"= 200.0, "h"=81.0, "r"=255, "g"=255, "b"=255, "size"=43, "halign"=1, "valign"=1))
+        }
+    })
+    
+    Min1:setColor(vec(255,255,0)), Min1:setMaterial("lights/white")
+    Max1:setColor(vec(255,0,0)), Max1:setMaterial("lights/white")
+    Min2:setColor(vec(255,150,0)), Min2:setMaterial("lights/white")
+    Max2:setColor(vec(255,150,0)), Max2:setMaterial("lights/white")
+    
+    guardScreen(EGP,Salary,Guards)
+    print("{!yellow [" + BankName + "]} {green " + BankName:lower() + " security E2 is ready}")
+}
+
+if(Keypad) {
+    if(!timerExists("Keypad")) {
+        timer("Keypad",300,function() { })
+        timer("TimeLeft",1,300,function() { TimeLeft = timerTimeLeft("Keypad") }) }
+}
+
+if(~Min1) {
+    Min1:setColor(vec(255,255,0)), Min1:setMaterial("lights/white")
+}
+
+if(~Max1 || ~Min1) {
+    Min1:setColor(vec(255,255,0)), Min1:setMaterial("lights/white")
+    Max1:setColor(vec(255,0,0)), Max1:setMaterial("lights/white")
+}
+
+if(~Min2 || ~Max2) {
+    Min2:setColor(vec(255,150,0)), Min2:setMaterial("lights/white")
+    Max2:setColor(vec(255,150,0)), Max2:setMaterial("lights/white")
+}
+
+if(~Door4 || ~Door5 || ~Door6 || ~Door7 || ~Door8 || ~Door9 || ~Door10 || ~Door11 || ~Door12 || ~Door13 || first() || dupefinished()){ 
+    Doors = array()
+    if(Door4:entity():isValid()) { Doors:pushWirelink(Door4), Door4:entity():setMaterial(Material) }
+    if(Door5:entity():isValid()) { Doors:pushWirelink(Door5), Door5:entity():setMaterial(Material) }
+    if(Door6:entity():isValid()) { Doors:pushWirelink(Door6), Door6:entity():setMaterial(Material) }
+    if(Door7:entity():isValid()) { Doors:pushWirelink(Door7), Door7:entity():setMaterial(Material) }
+    if(Door8:entity():isValid()) { Doors:pushWirelink(Door8), Door8:entity():setMaterial(Material) }
+    if(Door9:entity():isValid()) { Doors:pushWirelink(Door9), Door9:entity():setMaterial(Material) }
+    if(Door10:entity():isValid()) { Doors:pushWirelink(Door10), Door10:entity():setMaterial(Material) }
+    if(Door11:entity():isValid()) { Doors:pushWirelink(Door11), Door11:entity():setMaterial(Material) }
+    if(Door12:entity():isValid()) { Doors:pushWirelink(Door12), Door12:entity():setMaterial(Material) }
+    if(Door13:entity():isValid()) { Doors:pushWirelink(Door13), Door13:entity():setMaterial(Material) }
+}
+
+if(userInput(User) && User:isValid()) {
+    let CurrentUser = User
+    let Cursor = cursorObj(array("ApplyButton"))
+    switch (Cursor) {
+        case "ApplyButton",
+            CurrentUser:soundPlay(0,1,"buttons/button15.wav")
+            if(Guards:count() < 4) {
+                if(CurrentUser:team():teamName() == "Security Guard" || CurrentUser:team():teamName():find("Mercenary") || CurrentUser:team():teamName() == "CUSTOM_MERCENARY") {
+                    if(!timerExists(CurrentUser:name())) {
+                        timer(CurrentUser:name(), 60, function() {})
+                        owner():msg("{! [" + BankName + "] } {blue " + CurrentUser:name():upper() + "} has applied to be a {yellow security guard}")
+                        owner():soundPlay(0,0,"tau/notifications/new.mp3")
+                        CurrentUser:msg("{! [" + BankName + "] } {!blue " + owner():name():upper() + "} has been notified of your interest. Expect a PM on next steps. {green Good Luck.}")
+                    }
+                    else { CurrentUser:msg("{! [" + BankName + "] } {red PLEASE DO NOT SPAM THE BUTTON, " + owner():name():upper() + " HAS RECEIVED A MESSAGE REGARDING YOUR INTEREST}") }
+                }
+                else { CurrentUser:msg("{! [" + BankName + "] } You need to be a {!blue GUARD} OR {blue MERCENARY} to apply for this postion") }
+            }
+            else { CurrentUser:msg("{! [" + BankName + "] } {red Sorry, all} {blue GUARD} AND {blue MERCENARY} {red postions are filled,} {green thanks for applying}") }
+        break,
+    }
+}
+
+event keyPressed(Player:entity, Key:string, Down:number, KeyBind:string) {
+    if(KeyBind == "use" && Down == 1) {
+        let AimEntity = Player:aimEntity()
+        
+        # Check Door 1
+        if(Door1:entity():isValid() && AimEntity == Door1:entity()) {
+            if(!Door1["FadeActive", number]) {
+                # Only owner, guard, or guest can open - no customer assignments
+                if(Player == owner() || Guards:exists(Player:steamID()) || Guests:exists(Player:steamID())) {
+                    Door1["Fade", number] = 1
+                    Door1:entity():soundPlay(randint(5,255),2,"bms_objects/doors/door_am_close.wav")
+                    timer("CloseDoor1",4,function() { Door1["Fade", number] = 0, Door1:entity():soundPlay(randint(5,255),2,"bms_objects/doors/door_am_dooropened.wav") })
+                }
+                else {
+                    Player:msg("{! [" + BankName + "] } {red You do not have access to this door.}")
+                }
+            }
+        }
+        
+        # Check Door 2
+        if(Door2:entity():isValid() && AimEntity == Door2:entity()) {
+            if(!Door2["FadeActive", number]) {
+                # Only owner, guard, or guest can open - no customer assignments
+                if(Player == owner() || Guards:exists(Player:steamID()) || Guests:exists(Player:steamID())) {
+                    Door2["Fade", number] = 1
+                    Door2:entity():soundPlay(randint(5,255),2,"bms_objects/doors/door_am_close.wav")
+                    timer("CloseDoor2",4,function() { Door2["Fade", number] = 0, Door2:entity():soundPlay(randint(5,255),2,"bms_objects/doors/door_am_dooropened.wav") })
+                }
+                else {
+                    Player:msg("{! [" + BankName + "] } {red You do not have access to this door.}")
+                }
+            }
+        }
+        
+        # Check Door 3
+        if(Door3:entity():isValid() && AimEntity == Door3:entity()) {
+            if(!Door3["FadeActive", number]) {
+                # Only owner, guard, or guest can open - no customer assignments
+                if(Player == owner() || Guards:exists(Player:steamID()) || Guests:exists(Player:steamID())) {
+                    Door3["Fade", number] = 1
+                    Door3:entity():soundPlay(randint(5,255),2,"bms_objects/doors/door_am_close.wav")
+                    timer("CloseDoor3",4,function() { Door3["Fade", number] = 0, Door3:entity():soundPlay(randint(5,255),2,"bms_objects/doors/door_am_dooropened.wav") })
+                }
+                else {
+                    Player:msg("{! [" + BankName + "] } {red You do not have access to this door.}")
+                }
+            }
+        }
+        
+       # Check Printer Doors (Door4-Door13)
+        foreach (_:number, Door:wirelink = Doors) {
+            if(Door:entity() == AimEntity) {
+                if (!Door:entity():isValid()){ continue } 
+                let DoorID = Door:entity():id()
+                
+#[                # Check if this is a guard door and player is a guard but not assigned
+                if(Player != owner() && !isPlayerAssignedToDoor(DoorID, Player:steamID()) || (GuardDoors[DoorID, number] && !Guards:exists(Player:steamID()))) {
+                    Player:msg("{! [" + BankName + "] } {red You do not have access to this door, please contact} {!yellow " + owner():name():upper() + "} {red if you believe this is a mistake.}")
+                    continue
+                }]#
+                
+                # Check if player has permission (owner, assigned to door, or guard with guard door access)
+                let HasPermission = (Player == owner() || isPlayerAssignedToDoor(DoorID, Player:steamID()) || (GuardDoors[DoorID, number] && Guards:exists(Player:steamID())))
+                
+                if (!HasPermission) {
+                    Player:msg("{! [" + BankName + "] } {red You do not have access to this door, please contact} {!yellow " + owner():name():upper() + "} {red if you believe this is a mistake.}")
+                    Door:entity():soundPlay(randint(5,255),2,"tools/ifm/ifm_denyundo.wav")
+                    continue
+                }
+                
+                # Player has permission, open the door
+                if (!Door["FadeActive",number]) {
+                    Door["Fade",number] = 1
+                    Door:entity():soundPlay(randint(5,255),2,"doors/doorstop1.wav")
+                    let CapturedDoor = Door
+                    
+                    timer("CloseDoor" + CapturedDoor:entity():id(),10,function() {
+                        findInBox(Min1:pos(),Max1:pos())
+                        let Players = findToArray()
+                        if(Players:count() != 0){
+                            foreach (_:number, Player:entity = Players) {
+                                if(Player == owner()) {
+                                    CapturedDoor["Fade", number] = 0
+                                    CapturedDoor:entity():soundPlay(randint(5,255),2,"buttons/button2.wav")
+                                    break
+                                }
+                            }
+                        }
+                    })
+                }
+                elseif(!timerExists("CloseDoor" + Door:entity():id())) {
+                    if(!timerExists("raid" + Door:entity():id())) {
+                        let CapturedDoor = Door
+                        timer("raid" + Door:entity():id(),10.5,0,function() {
+                            if(!CapturedDoor["FadeActive",number]) {
+                                CapturedDoor["Fade", number] = 1
+                                CapturedDoor:entity():soundPlay(randint(5,255),2,"buttons/button5.wav")
+                            }
+                            else {
+                                stoptimer("raid" + CapturedDoor:entity():id())
+                            }
+                        })
+                    }
+                }
+            }
+        }
+    }
+}
+
+event playerChangedTeam(Player:entity, OldTeam:number, NewTeam:number) {
+    if(teamName(OldTeam) == "Security Guard" || teamName(OldTeam):find("Mercenary")) {
+        if(Guards:exists(Player:steamID())) {
+            if(teamName(NewTeam) != "Security Guard" && !teamName(NewTeam):find("Mercenary")) {
+                removeGuard(Player)
+            }
+        }            
+    }
+}
+
+event chat(Player:entity, Message:string, _:number) {
+    if(Message:upper():find("!CODE")) {
+        foreach (_:number, Door:wirelink = Doors) {
+            let DoorID = Door:entity():id()
+            
+            if(Player == owner() || isPlayerAssignedToDoor(DoorID, Player:steamID())) {
+                Player:msg("{!yellow [" + BankName + "] } CODE: {green " + Code + "}. Remember to press {green 'E'} to open doors.")
+                break
+            }
+        }
+    }
+    if(Player == owner() && Message:sub(1, 1) == "*") {
+        local Args = Message:explode(" ")
+        local Command = Args[1, string]:upper()
+        Args:remove(1)
+        cmdAdmin(Command:sub(2), Args)
+        hideChat(1)
+    }
+    if(Player == owner() && Message:sub(1, 1) == "!") {
+        local Args = Message:explode(" ")
+        local Command = Args[1, string]:upper()
+        Args:remove(1)
+        cmdPlayer(Command:sub(2), Args)
+        hideChat(1)
+    }
+}
+
+event remote(Sender:entity, Player:entity, Payload:table) {
+    if (Player == owner()) { # Make sure this is coming from your e2 chip not someone else's
+        if (E2Chips:findEntity(Sender)) { # This would be triggered when a receiver chip requests data
+            Sender:sendRemoteEvent(Guards)
+        }
+        else { # This would be triggered when a receiver chip is placed down
+            E2Chips:pushEntity(Sender)
+            print("E2 Chip initialized with " + Sender:getName() + ": " + Sender:id())
+        }
+    }
+}
+
