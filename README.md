@@ -1,5 +1,7 @@
 # Cozzah's Bank System - Complete Documentation
 
+See [Development Notes](DEVELOPMENT.md) for information about the codebase.
+
 ## Table of Contents
 - [Banker E2 Main](#banker-e2-main)
 - [Bank Depo E2](#bank-depo-e2)
@@ -11,6 +13,9 @@
 ---
 
 ## Banker E2 Main
+
+Single-file data: Editable variables are placed at the top of the E2 file when only used within that chip
+Shared data: Common values used across multiple E2s have been moved to a centralized config file
 
 ### Technical Details
 
