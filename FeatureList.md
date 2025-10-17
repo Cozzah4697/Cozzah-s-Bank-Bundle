@@ -45,14 +45,77 @@
 - `!guests` - List guests with time remaining
 - `!code` - Resend keypad code (for assigned customers)
 
+#### Panic Button System:
+- **3-second press activation** with incremental button sound feedback
+- **Emergency 911 broadcast:** "PANIC ALARM TRIGGERED AT [BANKNAME], WE ARE BEING RAIDED [LOCATION]"
+- **Voice line:** Plays "bot/i_could_use_some_help_over_here.wav"
+- **Notifications:** Alerts owner and all guards via chat
+- **Manual reset:** `*resetpanic` command stops alarm and closes toggle doors
+- **Counter tracking:** Shows button press progress
+
+#### Raid HUD Display System:
+- **Separate EGP screen (EGPRaid)** shows real-time security status
+- **Three status states:**
+  - **SAFE (Green):** No threats detected, all clear
+  - **ALLOWED (Orange):** Authorized customer in restricted area (with keypad access)
+  - **RAID (Red/Flashing):** Unauthorized player detected, alarm active
+- **Visual feedback:** Box color changes with status (green → orange → red/flashing)
+- **Large text display:** Status clearly visible from distance
+
+#### Alarm System:
+- **Sound:** Plays "city_firebell_loop1.wav" on loop
+- **Visual integration:** Syncs with Bank Prop Grayscale Cycling E2 (props turn red and flash)
+- **Auto-start:** Triggers on unauthorized player detection or lockpick detection
+- **Auto-stop:** Silences when threat cleared
+- **Notifications:** Messages sent to owner and all guards
+- **AlarmActive output:** Sends signal to other E2s for synchronization
+
+#### Configuration Variables (editable in code):
+- **Code:** Keypad access code (default: 1234)
+- **Salary:** Guard pay rate per hour (default: $900,000/hour, minimum $50,000/hour)
+- **Sound:** Alarm sound file (default: "ambient/alarms/city_firebell_loop1.wav")
+- **Material:** Zone marker material (default: "lights/white")
+- **Location:** Descriptive text for panic broadcast location (default: "across from export Manager")
+- **FloorMode:** Floor detection setting (default: 1)
+  - Mode 1: Single floor (no floor differentiation)
+  - Mode 2: Bottom floor allows customers
+  - Mode 3: Top floor allows customers
+
+#### Setup Requirements:
+- **Required Wiring:**
+  - EGP: Main guard application/roster screen
+  - EGPRaid: Separate raid status display screen
+  - Door1-3: Main security fading doors (wirelink)
+  - Door4-13: Customer printer fading doors (wirelink, up to 10 doors)
+  - PanicButton: Physical button (wirelink)
+  - Min1/Max1: Customer zone boundary markers (entities)
+  - Min2/Max2: Secure zone boundary markers (entities)
+  - Keypad: Keypad input (number)
+
+- **Entity Setup:**
+  - Place colored markers at zone corners
+  - E2 automatically colors them on spawn:
+    - Min1/Max1 (Customer zone): Yellow
+    - Max1 (Upper boundary): Red
+    - Min2/Max2 (Secure zone): Orange
+  - Markers use "lights/white" material for visibility
+
+#### Banker System:
+- **Automatic banker detection** (job-based: "Banker" job required)
+- **Banker benefits:** 0% tax like guards, paid every 10 minutes
+- **Auto-hire:** Detects when player takes banker job
+- **Auto-fire:** Removes banker when job changes
+- **Salary:** Same rate as guards ($900k/hour default)
+- **Notifications:** Receives all security alerts like guards
+
 #### Additional Features:
 - Remote table sharing with other E2s
 - Door auto-close system (10 seconds)
 - Raid mode toggle doors
-- Visual EGP status display (SAFE/RAID/ALLOWED)
 - Configurable alarm sound and materials
-- Automatic guard payment notifications
+- Automatic guard payment notifications (every 10 minutes)
 - Door open/close sound effects
+- 60-second application cooldown per player
 
 ---
 
@@ -65,40 +128,96 @@
 - Automatic rack owner assignment with optional manual owner change command
 - Customer notification system
 - HUD position customisation (HUDX/HUDY variables)
+- 10-minute collection reminder timer with cash sound effect
+- Distance tracking (HUD clears when moving away from racks)
+- Updates every 0.1 seconds for smooth HUD display
 
 #### Collection System:
-Real-time collection display HUD showing:
-- Customer name & rack type (RACK/TOWER)
-- Membership tier with colour coding
-- Total tax collected per rack
-- Collection amount preview
+- Real-time collection display HUD showing:
+  - Customer name & rack type (RACK/TOWER)
+  - Membership tier with colour coding (Diamond=cyan, Gold=yellow, Silver=gray, Copper=brown, Guards=blue)
+  - Total tax collected per rack
+  - Collection amount preview
 - Automatic tax calculation based on membership tier
 - Guard exemption (0% tax for guards)
-- Smart batching: Single payment message for multiple rack collections
-- Payment shows: total profit, tax amount, percentage, rack count
+- Smart batching: Single payment message for multiple rack collections within 5 seconds
+- Payment breakdown shows: total profit, tax amount, percentage, rack count
+- Color-coded, branded chat notifications
+- Tracks individual tax totals for every rack in bank
+
+#### Tax Rates by Tier:
+| Tier | Tax Rate | Insurance |
+|------|----------|-----------|
+| Copper (Default) | 35% | 0% |
+| Silver | 25% | 50% |
+| Gold | 20% | 75% |
+| Diamond | 10% | 100% |
+| Security Guards | 0% | N/A |
 
 #### Administration:
 - Bank closing notification system with countdown
 - Customer list with tier display and tax totals
 - Total profit summary (all racks combined)
-- Manual wire transfer system
-- Raid notification system (alerts all customers)
+- Manual wire transfer system (minimum $1,000)
+- Raid notification system (alerts all customers for insurance trigger)
 - Rack owner override system
 
-#### Chat Commands (`*` prefix):
-- `*help` - Show admin commands
-- `*close [minutes] [notification_count]` - Send closing warnings
-- `*customers` - List all customers with tiers and tax totals
-- `*profit` - Show total tax profit summary
-- `*wire [player] [amount]` - Send money to player (min $1,000)
-- `*owner [player]` - Assign player to aimed rack
-- `*raided` - Notify all customers of raid (insurance trigger)
+#### Insurance System:
+- **Automatic insurance calculation** based on membership tier
+- **Item value tracking:**
+  - Standard Rack: $25,000
+  - Pro Rack: $100,000
+  - Basic Printer: $30,000
+  - Advanced Printer: $60,000
+  - Tier 5 Printer: $75,000
+  - VIP Printer: $200,000
+  - VIP+ Printer: $275,000
+  - Epic Printer: $375,000
+  - Legendary Printer: $450,000
+- **Insurance payout rates by tier:**
+  - Copper: 0% (no insurance)
+  - Silver: 50% of item value
+  - Gold: 75% of item value
+  - Diamond: 100% of item value (full coverage)
+  - Ruby: 100% of item value
+  - Guards: Not applicable
+- **Payout process:**
+  - Calculates total value of all printers and racks per customer
+  - Multiplies by customer's insurance rate
+  - Pays out automatically to all affected customers
+  - Processes each unique player once (prevents duplicates)
+  - Shows detailed breakdown of printer types, counts, and values
+  - Offline customers tracked and paid when they reconnect
 
-#### Additional Features:
+#### Chat Commands (`*` prefix):
+- `*help` - Show admin commands with full command list
+- `*close [minutes] [notification_count]` - Send closing warnings with automated countdown
+  - Example: `*close 30 6` (30 minutes with 6 notifications)
+  - Auto-calculates notification intervals
+  - Progressive warnings ("15 mins", "10 mins", "5 mins")
+  - Final notification authorizes printer destruction
+- `*customers` - List all customers with tiers and tax totals
+- `*profit` - Show total tax profit summary (total, rack count, average per rack)
+- `*wire [player] [amount]` - Send money to player (both parties get confirmation)
+- `*owner [player]` - Assign player to aimed rack (shows old/new owner)
+- `*raided` - Notify all customers of raid (triggers insurance notification)
+- `*insurance` - Manually pays insurance to ALL customers (processes all racks)
+- `*checkinsurance [player]` - Shows detailed insurance breakdown for specific player:
+  - Lists all printers with counts and values (color-coded by tier)
+  - Lists all racks with values
+  - Shows total item value
+  - Shows insurance rate based on tier
+  - Calculates exact payout amount
+- `*setprinter [player] [type] [count]` - Manually set printer count for customer
+  - Types: Basic, Advanced, Tier 5, VIP, VIP+, Epic, Legendary
+  - Used for manual insurance tracking adjustments
+
+#### Integration Features:
 - Remote table synchronisation with Security & Membership E2s
-- 10-minute collection reminder timer
-- Automatic customer tier recognition
+- Automatic customer tier recognition from Membership E2
+- Guard roster sync from Security E2 for 0% tax
 - Tax total accumulation per rack
+- Automatic syncs via remote events - no manual data entry
 
 ---
 
@@ -106,11 +225,14 @@ Real-time collection display HUD showing:
 
 #### Main Features:
 - Permanent membership tier system (survives server restarts)
-- File-based persistence (`banker_memberdata.txt`)
-- 5 Membership tiers: Copper (free), Silver, Gold, Diamond, Ruby (ruby can only be given via chat command and has a 1% tax, used to give to good friends)
-- Interactive EGP purchase interface
-- Remote table broadcasting to other E2s
+- **Temporary membership system** (admin-granted, time-limited)
+- File-based persistence (`banker_memberdata.txt` in JSON format)
+- 5 Membership tiers: Copper (free), Silver, Gold, Diamond, Ruby
+- Interactive EGP purchase interface with animated UI transitions
+- Remote table broadcasting to other E2s (Main, Security, Deposit)
 - Tier upgrade system (no downgrades allowed)
+- 60-second auto-refresh system
+- Automatic E2 chip registration
 
 #### Membership Tiers:
 | Tier | Tax | Insurance | Cost |
@@ -121,81 +243,214 @@ Real-time collection display HUD showing:
 | **Diamond** | 10% | 100% | $5M |
 | **Ruby** | 1% | 100% | Admin-only |
 
-#### Chat Commands (`*` prefix):
-- `*give [player] [tier_number]` - Assign tier (1-4: Silver/Gold/Diamond/Ruby)
+#### Temporary Membership System:
+- **Admin-granted temporary tiers** (Silver, Gold, Diamond)
+- **Separate from permanent tiers** - players can have both
+- **Effective tier** = highest of permanent OR temporary
+- **Can upgrade temp to permanent** by purchasing
+- **Manual clearing** via admin command
+- **View all active temp memberships** with list command
+- **Usage:** Promotional trials, VIP weekends, testing
 
-#### Additional Features:
-- Visual tier cards with icons (Bar for lower tiers, diamond for top tier)
-- Animated UI transitions
+#### Screen Interface:
+- **Home Screen:** Bank branding, "GET YOUR MEMBERSHIP HERE" headline, large "START" button with animations
+- **Membership Selection Screen:** Shows membership cards side-by-side with:
+  - Tier name with color coding (Copper=brown, Silver=gray, Gold=yellow, Diamond=cyan, Ruby=special)
+  - Tax rate and insurance percentage
+  - Cost (or "DEFAULT" for Copper)
+  - Interactive purchase buttons for both permanent AND temporary tiers
+  - "PERM PASS" labels on purchasable permanent tiers
+  - Tier icon/symbol (bar for lower tiers, diamond for top tier)
+- **Anti-downgrade protection:** Shows message if player already has same/higher tier
+- **Distance monitoring:** Auto-resets if customer walks 100+ units away
+- **One user at a time:** Locks screen to current user
+
+#### Payment System:
+- 5-second payment window with popup
+- Exact payment verification ($1M, $2M, or $5M)
 - Automatic refund on invalid payments
+- Payment cancellation handled gracefully
 - One-time permanent purchase (no subscriptions)
 - Already-purchased tier prevention
-- Remote E2 initialisation system
+- Cash register sound on successful purchase
+- Spam protection (1-second cooldown between button clicks)
+
+#### Chat Commands (`*` prefix):
+- `*help` - Show admin help with full command list
+- `*give [player] [tier_number]` - Grant permanent tier (1=Silver, 2=Gold, 3=Diamond, 4=Ruby)
+  - Prevents downgrades
+  - Sends confirmation to both admin and player
+  - Used for: promotions, fixing issues, rewarding customers, staff benefits
+- `*granttemp [player] [tier_number]` - Grant temporary tier (1=Silver, 2=Gold, 3=Diamond)
+  - Separate from permanent tier
+  - Can be upgraded to permanent by purchasing
+  - Useful for trials and promotional periods
+- `*cleartemp` - Clear ALL temporary memberships at once
+- `*listtemp` - Show list of all active temporary memberships with player names and tiers
+- `*membership [player]` - Show detailed tier breakdown for specific player:
+  - Permanent tier
+  - Temporary tier
+  - Effective tier (whichever is higher)
+
+#### File Management:
+- Auto-created on first save in "banker_memberdata.txt"
+- Stores Steam ID → Tier Number mapping (e.g., "STEAM_0:1:12345" → 3)
+- Efficient lookup for tax calculations
+- Automatic save on membership changes
+- Load on E2 spawn/reset
+- Minimal memory footprint
+- JSON format for reliability
+
+#### Sound Effects:
+- Cash register sound on successful purchase
+- Button clicks for all interactions
+- Door sounds for screen transitions
+- Error beep for failed purchases
+
+#### Data Integrity Features:
+- No downgrades (prevents accidental tier downgrades)
+- Duplicate prevention (won't charge for tier already owned)
+- Steam ID tracking for reliable player identification
+- Offline support (tracks memberships even when players offline)
 
 ---
 
 ### 4. Deposit E2 (`cozzah's_bank_depo_e2.txt`)
 
 #### Main Features:
-- Interactive deposit station with instructions
-- Automatic door control during deposit
-- Membership tier display on entry
+- Interactive deposit station with animated touchscreen interface
+- Secure fading door system for equipment transfer
+- Automatic door control during deposit (opens front door, closes back security door)
+- **Automatic rack and printer detection** in deposit area (DepoMin/DepoMax zone)
+- **Base area printer/rack tracking** (BaseMin/BaseMax zone)
+- Membership tier display on entry with real-time sync
 - Distance-based auto-exit (250 units)
 - Comprehensive instruction screen
-
-#### Instruction Screen Includes:
-- Deposit process (rack requirement warning)
-- Collection explanation
-- Customer access details (keypad, door colours, 5-minute timer)
-- Storage rules
-- Team-sized slot information
-
-#### Additional Features:
-- Animated door opening
-- Visual membership card display with tier colours
 - Auto-reset on user exit
-- Remote membership data synchronisation
-- "I UNDERSTAND" confirmation button
+- **Live printer count display** on screen during deposit
+
+#### Detection Systems:
+- **Depo Area Detection (DepoMin/DepoMax):**
+  - Scans for all printer racks (standard and pro)
+  - Counts individual printers by type (Basic, Advanced, Tier 5, VIP, VIP+, Epic, Legendary)
+  - Assigns ownership to depositing player via Steam ID
+  - Detects empty racks vs racks with printers
+  - Real-time count display: "Detected X racks and Y printers"
+  
+- **Base Area Tracking (BaseMin/BaseMax):**
+  - Continuous monitoring of banker's storage area
+  - Tracks total printer count by type
+  - Tracks total rack count by type
+  - Updates text screen output for external displays
+  
+- **Data Transmission to Main E2:**
+  - Automatically sends rack ownership data to Banker Main E2
+  - Sends printer count data for insurance calculations
+  - Finds Main E2 within 200-unit radius
+  - Clears local data after successful transmission
+
+#### Screen States:
+- **Home Screen:** Bank branding, large handle in center with "START" text, rotating handle animation
+- **Deposit Active Screen:** 
+  - Bank branding at top
+  - Animated arrow pointing to deposit area
+  - Large instruction text
+  - **"PRINTERS FOUND" section** showing:
+    - Rack counts by type (Standard/Pro)
+    - Printer counts by type with color coding
+    - Real-time updates as items are detected
+    - "No printers or racks detected" message if empty
+  - "FINISH AND EXIT" button with pulsing animation
+  
+#### Instruction Screen Includes:
+- **Deposit process:** Rack requirement warning (⚠️ empty racks will be destroyed)
+- **Collection explanation:** Automatic payments after tax deduction
+- **Customer access details:** Keypad usage, door colours (green when nearby), 5-minute timer
+- **Storage rules:** Rack placement guidelines
+- **Team-sized slot information**
+- **Membership tier card display:** Shows current tier with color coding and benefits
+- **"I UNDERSTAND" confirmation button**
+
+#### Customer Flow:
+1. Customer clicks rotating handle to begin
+2. Views tier benefits and deposit instructions
+3. Clicks "I UNDERSTAND" confirmation
+4. Clicks "DEPOSIT" button
+5. Front fading door opens automatically, back security door closes
+6. Customer passes printers/racks through
+7. **E2 detects and counts all items** in deposit area (1-second delay)
+8. **Live count displayed on screen** (updates every 0.5 seconds)
+9. Bank owner receives notification with detection summary
+10. Customer clicks "FINISH AND EXIT" when done
+11. Auto-close if customer walks >250 units away
+
+#### Rack Classification:
+- **Standard Rack:** Basic printer_rack entities
+- **Pro Rack:** printer_rack_pro or racks with "pro"/"advanced" in class name
+- Insurance values: Standard $25k, Pro $100k
+
+#### Printer Classification:
+Automatically identifies printer types for insurance tracking:
+- Basic, Advanced, Tier 5, VIP, VIP+, Epic, Legendary
+- Maps class names to insurance categories
+- Counts duplicates per player
+
+#### Animation Features:
+- 1-4 second transitions for smooth experience
 - Dynamic tier icon display (bar/diamond based on tier)
+- Auto-cleanup removes off-screen elements after 10 seconds
+- Arrow animation with 0.8-second pulsing movement
+- Various door and button sounds for immersion
+
+#### Integration:
+- Remote membership data synchronisation
+- Displays real-time tier information
+- Visual membership card display with tier colours
+- Sends rack/printer data to Main E2 for tax calculations
+- Owner notification system
 
 ---
 
 ### 5. Printer EGP Display E2 (`printer_egp_auto_cop_pay_set_mass_combo.txt`)
 
 #### Main Features:
-- Animated printer rack display with collection animation
-- Command-payment system for law enforcement in area if they help stop raid
-- Prop mass & collision configuration
+- Animated printer rack display with 7-step collection animation
+- Command-payment system for law enforcement ($100k payout)
+- Prop mass & collision configuration (3000 mass, collision groups 20)
 - RGB colour cycling system (8 props)
-- Bank advertisement system using an array of adverts
+- Bank advertisement system (33 unique GPT-generated messages)
+- Supports 12 props via inputs (Prop01-Prop12)
 
-#### Visual Features (Does nothing, just cool to look at):
-- Real-time stats display (storage, temperature, profits, cooler rating)
-- Animated collection sequence (7-step animation)
-- Money handle animation
-- Temperature gauge with colour changes
-- Loading animation with spinner
-- Total bank profit counter
+#### Visual Features (Decorative Display):
+- **Real-time stats display:**
+  - Storage capacity bar (0-$300k)
+  - Temperature gauge with colour changes
+  - Profits counter
+  - Cooler rating
+- **Animated sequences:**
+  - 7-step collection animation
+  - Money handle animation
+  - Loading animation with spinner
+  - Total bank profit counter
 
 #### Automation:
 - Simulated printing (adds $700-720 every 3 seconds)
 - Temperature simulation (rises randomly, cools at 100°C)
-- Storage capacity bar (0-$300k)
-- Auto-collection trigger at $250k-300k
+- Auto-collection trigger at $250k-300k threshold
 
 #### Law Enforcement System:
-- `*cops` command: Pay $100k to all nearby law enforcement
-- Job detection array: Mayor, Police, SWAT, Secret Service, Custom Police
-- 1000-unit radius detection
+- `*cops` command: Pay $100k to all nearby law enforcement within 1000-unit radius
+- Job detection array includes: Mayor, Police, SWAT, Secret Service, Custom Police
+- Radius-based proximity detection
 
 #### Advertisement System:
 - 33 unique bank advertisement messages
-- Auto-sends every 5 minutes (configurable: MinAdvert variable)
-- GPT-generated banking taglines for fun
+- Auto-sends every 5 minutes (configurable via MinAdvert variable)
+- GPT-generated banking taglines
+- Automated messaging system
 
 #### Additional Commands:
-- `*setstate` - Refresh prop mass/collision settings (3000 mass, collision groups 20)
-- Supports 12 props via inputs (Prop01-Prop12)
+- `*setstate` - Refresh prop mass/collision settings (applies to all 12 props)
 
 ---
 
@@ -210,14 +465,20 @@ Real-time collection display HUD showing:
 - Special lightbar detection (preserves `cssconvertedmats/lightbareon01`)
 
 #### Colour System:
-- **Normal:** Smooth grayscale cycling (0-200 brightness value)
-- **Alarm:** Red strobe effect (255,0,0 flashing)
-- **Fence exception:** Red and White strobe at 255 alpha during alarm
+- **Normal Mode:** Smooth grayscale cycling (0-200 brightness value)
+- **Alarm Mode:** Red strobe effect (255,0,0 flashing)
+- **Fence Exception:** Red and White strobe at 255 alpha during alarm
 
 #### Material System:
-- **Button ON:** `cssconvertedmats/nuke_metalgrate_01`
-- **Button OFF:** `cssconvertedmats/train_largemetal_door_01`
+- **Button ON:** `cssconvertedmats/nuke_metalgrate_01` (privacy screen engaged)
+- **Button OFF:** `cssconvertedmats/train_largemetal_door_01` (privacy screen disengaged)
 - **All other props:** `lights/white` material
+- **Lightbar Preservation:** Does not override `cssconvertedmats/lightbareon01`
+
+#### Integration:
+- Works with Bank Security E2 alarm system
+- Automatically detects alarm state and switches to red strobe
+- Returns to normal grayscale cycling when alarm cleared
 
 ---
 
@@ -237,28 +498,42 @@ Real-time collection display HUD showing:
 
 ### Key Interconnections:
 - **Security ↔ Main:** Shares guard list for 0% tax
-- **Membership ↔ Main:** Shares tier data for tax calculation
-- **Membership ↔ Security:** Shares tier data for customer identification
-- **Membership ↔ Deposit:** Shares tier data for display
+- **Membership → Main:** Shares tier data for tax calculation
+- **Membership → Security:** Shares tier data for customer identification
+- **Membership → Deposit:** Shares tier data for display
+- **Deposit → Main:** Sends rack ownership and printer count data
+- **Security → Grayscale:** Sends alarm state for visual effects
 
 ---
 
 ## Special Features Summary
 
 ### Security:
-13 door inputs, multi-zone detection, panic system, floor detection, customer codes
+13 door inputs, multi-zone detection, panic system, floor detection, customer codes, banker system, raid HUD display
 
 ### Economy:
-Tiered taxation, batch payouts, insurance system, guard salaries, rack tracking
+Tiered taxation, batch payouts, insurance system, guard salaries, rack tracking, automatic detection
 
 ### User Experience:
-Animated UIs, help screens, chat commands, visual feedback, timer displays
+Animated UIs, help screens, chat commands, visual feedback, timer displays, live printer counting
 
 ### Administration:
-20+ chat commands, manual overrides, customer management, profit tracking, closing system
+25+ chat commands, manual overrides, customer management, profit tracking, closing system, insurance claims
 
 ### Automation:
-Auto-collection, batch messaging, distance checks, door timers, alarm triggers
+Auto-collection, batch messaging, distance checks, door timers, alarm triggers, prop detection, data transmission
 
 ### Persistence:
-File-based membership storage, remote E2 synchronisation
+File-based membership storage, remote E2 synchronisation, offline player tracking
+
+---
+
+## Credits
+Created by Cozzah
+
+## Support
+For issues, questions, or feature requests, please contact the developer.
+
+---
+
+*Last Updated: 2024*
