@@ -1,0 +1,551 @@
+@name Cozzah's Banker E2 Membership
+@persist [CurrentPlayer]:entity
+@persist [MemberData]:table [E2Chips]:array
+@persist [TIER_SILVER TIER_GOLD TIER_DIAMOND]:number
+#include "CozzahsBankBundle/includes/animations"
+#include "CozzahsBankBundle/includes/ui"
+#include "CozzahsBankBundle/includes/functions"
+#include "CozzahsBankBundle/includes/membership_configuration"
+
+function void startMemberDataLoading() {
+    if(fileCanLoad()) {
+        fileLoad("banker_memberdata.txt")
+    }
+    else {
+        error("Cannot load member data file")
+    }
+}
+
+if(first() || dupefinished() || ~EGP) {
+    EGP:clear()
+    CurrentPlayer = _NO_ENTITY
+    
+    # Constants for MemberData Tiers
+    TIER_SILVER = 1
+    TIER_GOLD = 2
+    TIER_DIAMOND = 3
+
+    # Initialize single member table
+    MemberData = table()
+    E2Chips = array()
+    
+    # Load member data from file
+    timer("loadMemberData",1, function() {
+        startMemberDataLoading()
+    })
+    
+    memberHomeScreen(Elements, EGP,"default",function() {
+        membership(Elements, EGP)
+    })
+    
+    print("{blue [INFO]} {yellow Remember to clear memberships with} {green *cleartemp}")
+}
+
+function void saveMemberData() {
+    if(fileCanWrite()) {
+        fileWrite("banker_memberdata.txt", jsonEncode(MemberData,1))
+        print("Saved member data with " + MemberData:count() + " entries")
+    } else {
+        print("{! Cannot save member data - file system busy}")
+    }
+}
+
+# Get effective tier (highest of perm or temp)
+function number getEffectiveTier(Player:entity) {
+    if(!Player:isValid()) { return 0 }
+    
+    let SteamID = Player:steamID()
+    if(!MemberData:exists(SteamID)) { return 0 }
+    
+    # Check if old format (direct number)
+    let OldTier = MemberData[SteamID, number]
+    if(OldTier > 0) {
+        return OldTier  # Legacy support
+    }
+    
+    # New format (table with perm and temp)
+    let Entry = MemberData[SteamID, table]
+    let PermTier = Entry["perm_tier", number]
+    let TempTier = Entry["temp_tier", number]
+    
+    return max(PermTier, TempTier)
+}
+
+# Get permanent tier only
+function number getPermTier(Player:entity) {
+    if(!Player:isValid()) { return 0 }
+    
+    let SteamID = Player:steamID()
+    if(!MemberData:exists(SteamID)) { return 0 }
+    
+    let Entry = MemberData[SteamID, table]
+    return Entry["perm_tier", number]
+}
+
+# Get temp tier only
+function number getTempTier(Player:entity) {
+    if(!Player:isValid()) { return 0 }
+    
+    let SteamID = Player:steamID()
+    if(!MemberData:exists(SteamID)) { return 0 }
+    
+    let Entry = MemberData[SteamID, table]
+    return Entry["temp_tier", number]
+}
+
+# Replace the existing addMembershipData function with this updated version:
+function void addMembershipData(Player:entity, Tier:number) {
+    if(!Player:isValid()) { return }
+    
+    let SteamID = Player:steamID()
+    let CurrentPerm = getPermTier(Player)
+    let CurrentTemp = getTempTier(Player)
+    
+    # Allow upgrading from temp to perm of SAME tier
+    if(CurrentPerm >= Tier && CurrentTemp != Tier) {
+        Player:msg("{!yellow [" + BankName + "]} {yellow You already have same or higher tier permanently!}")
+        return
+    }
+    
+    # Allow upgrade if temp tier matches requested perm tier (e.g., temp Gold -> perm Gold)
+    if(CurrentPerm >= Tier && CurrentTemp == Tier) {
+        # This is an upgrade from temp to perm of the same tier - allow it
+    }
+    
+    # Don't allow downgrading from higher perm tier
+    if(CurrentPerm > Tier) {
+        Player:msg("{!yellow [" + BankName + "]} {yellow You already have higher tier permanently!}")
+        return
+    }
+    
+    # Convert old format to new if needed
+    if(!MemberData:exists(SteamID)) {
+        MemberData[SteamID, table] = table("perm_tier" = 0, "temp_tier" = 0)
+    } else {
+        let OldTier = MemberData[SteamID, number]
+        if(OldTier > 0) {
+            # Convert old format
+            MemberData[SteamID, table] = table("perm_tier" = OldTier, "temp_tier" = 0)
+        }
+    }
+    
+    # Set permanent tier
+    MemberData[SteamID, table]["perm_tier", number] = Tier
+    
+    # Clear temp tier if upgrading temp to perm of same tier
+    if(CurrentTemp == Tier) {
+        MemberData[SteamID, table]["temp_tier", number] = 0
+        Player:msg("{!yellow [" + BankName + "]} {green Upgraded your temporary membership to permanent!}")
+    }
+    
+    # Save to file after updating
+    saveMemberData()
+    
+    # Send appropriate message based on tier
+    if(Tier == TIER_SILVER) {
+        Player:msg("{!yellow [" + BankName + "]} {" + getTierColor(TIER_SILVER) + " Congratulations! You are now a perm Silver member!}")
+    }
+    elseif(Tier == TIER_GOLD) {
+        Player:msg("{!yellow [" + BankName + "]} {" + getTierColor(TIER_GOLD) + " Congratulations! You are now a perm Gold member!}")
+    }
+    elseif(Tier == TIER_DIAMOND) {
+        Player:msg("{!yellow [" + BankName + "]} {" + getTierColor(TIER_DIAMOND) + " Congratulations! You are now a perm Diamond member!}")
+    }
+    elseif(Tier == TIER_RUBY) {
+        Player:msg("{!yellow [" + BankName + "]} {" + getTierColor(TIER_RUBY) + " Congratulations! You are now a perm Ruby member!}")
+    }
+}
+
+##
+function void addTempMembershipData(Player:entity, Tier:number) {
+    if(!Player:isValid()) { return }
+    
+    let SteamID = Player:steamID()
+    let CurrentPerm = getPermTier(Player)
+    let CurrentTemp = getTempTier(Player)
+    
+    # Don't allow if they already have it permanently
+    if(CurrentPerm >= Tier) {
+        Player:msg("{!yellow [" + BankName + "]} {yellow You already have this tier permanently!}")
+        return
+    }
+    
+    # Don't allow temp downgrade
+    if(CurrentTemp >= Tier) {
+        Player:msg("{!yellow [" + BankName + "]} {yellow You already have same or higher temporary tier!}")
+        return
+    }
+    
+    # Convert old format to new if needed
+    if(!MemberData:exists(SteamID)) {
+        MemberData[SteamID, table] = table("perm_tier" = 0, "temp_tier" = 0)
+    }
+    else {
+        let OldTier = MemberData[SteamID, number]
+        if(OldTier > 0) {
+            # Convert old format
+            MemberData[SteamID, table] = table("perm_tier" = OldTier, "temp_tier" = 0)
+        }
+    }
+    
+    # Set temporary tier
+    MemberData[SteamID, table]["temp_tier", number] = Tier
+    
+    # Save to file after updating
+    saveMemberData()
+    
+    # Send appropriate message based on tier
+    if(Tier == TIER_SILVER) {
+        Player:msg("{!yellow [" + BankName + "]} {" + getTierColor(TIER_SILVER) + " Congratulations! You now have temporary Silver membership!}")
+    }
+    elseif(Tier == TIER_GOLD) {
+        Player:msg("{!yellow [" + BankName + "]} {" + getTierColor(TIER_GOLD) + " Congratulations! You now have temporary Gold membership!}")
+    }
+    elseif(Tier == TIER_DIAMOND) {
+        Player:msg("{!yellow [" + BankName + "]} {" + getTierColor(TIER_DIAMOND) + " Congratulations! You now have temporary Diamond membership!}")
+    }
+}
+
+function void bankReset() {
+    stopAllTimers()
+    CurrentPlayer = _NO_ENTITY
+    memberHomeScreen(Elements, EGP,"default",function() {
+        membership(Elements, EGP)
+    })
+}
+
+function void displayAdminHelp() {
+    # Send header
+    owner():msg("{#FFBF00 === ADMIN COMMANDS (MEMBERSHIP) ===}")
+    
+    # Admin commands
+    owner():msg("{#FFBF00 *help} - Shows this admin help message")
+    owner():msg("{#FFBF00 *give 'player' 'tier'} - Gives permanent membership (1=Silver, 2=Gold, 3=Diamond)")
+    owner():msg("{#FFBF00 *granttemp 'player' 'tier'} - Gives temporary membership (1=Silver, 2=Gold, 3=Diamond)")
+    owner():msg("{#FFBF00 *cleartemp} - Clears ALL temporary memberships")
+    owner():msg("{#FFBF00 *listtemp} - Shows list of all temporary memberships")
+    owner():msg("{#FFBF00 *membership 'player'} - Shows player's perm/temp/effective tiers")
+    
+    # Send footer
+    owner():msg("{#FFBF00 ==================================}")
+}
+
+function void cmdAdmin(Command:string, Args:array) {
+    switch(Command) {
+        case "HELP",
+            displayAdminHelp()
+        break,
+        case "GIVE",
+            if(Args:count() >= 2) {
+                let Player = Args[1, string]:findPlayer()
+                if(Player:isValid()) {
+                    let CurrentTier = getEffectiveTier(Player)
+                    let Tier = Args[2, string]:toNumber()
+                    if(Tier > CurrentTier && Tier <= 4 && Tier > 0) {
+                        addMembershipData(Player,Tier)
+                        print("{! [" + BankName + "] } {" + getTierColor(Tier) + " " + Player:name():upper() + " has been given " + getTierName(Tier):upper() + " tier.}")
+                    }
+                    elseif(Tier <= CurrentTier && Tier <= 4 && Tier > 0) {
+                        print("{! [" + BankName + "] } " + Player:name():upper() + " already has " + getTierName(CurrentTier) + " tier.")
+                    }
+                    else { print("{red [" + BankName + "] } {! INVALID TIER }") }
+                }
+                else { print("{red [" + BankName + "] } {! INVALID PLAYER }") }
+            }
+        break,
+        case "CLEARTEMP",
+            let ClearedCount = 0
+            foreach(_:string, Entry:table = MemberData) {
+                # Check if this entry has a temp tier
+                if(Entry["temp_tier", number] > 0) {
+                    Entry["temp_tier", number] = 0
+                    ClearedCount++
+                }
+            }
+            
+            # Save after clearing
+            if(ClearedCount > 0) {
+                saveMemberData()
+                print("{green [" + BankName + "] } Cleared " + ClearedCount + " temporary memberships.")
+            } else {
+                print("{yellow [" + BankName + "] } No temporary memberships to clear.")
+            }
+        break,
+        case "GRANTTEMP",
+            if(Args:count() >= 2) {
+                let Player = Args[1, string]:findPlayer()
+                if(Player:isValid()) {
+                    let Tier = Args[2, string]:toNumber()
+                    if(Tier >= 1 && Tier <= 4) {
+                        addTempMembershipData(Player, Tier)
+                        print("{! [" + BankName + "] } {" + getTierColor(Tier) + " " + Player:name():upper() + " has been given temporary " + getTierName(Tier):upper() + " tier.}")
+                    }
+                    else { print("{red [" + BankName + "] } {! INVALID TIER (1-4) }") }
+                }
+                else { print("{red [" + BankName + "] } {! INVALID PLAYER }") }
+            }
+        break,
+        case "LISTTEMP",
+            let TempCount = 0
+            owner():msg("{#FFBF00 === TEMPORARY MEMBERSHIPS ===}")
+            
+            foreach(SteamID:string, Entry:table = MemberData) {
+                let TempTier = Entry["temp_tier", number]
+                if(TempTier > 0) {
+                    let Player = SteamID:findPlayer()
+                    let PlayerName = Player:isValid() ? Player:name() : "OFFLINE"
+                    let TierName = getTierName(TempTier)
+                    let TierColor = getTierColor(TempTier)
+                    
+                    owner():msg("{" + TierColor + " " + PlayerName + " - " + TierName + " (TEMP)}")
+                    TempCount++
+                }
+            }
+            
+            if(TempCount == 0) {
+                owner():msg("{#FFBF00 No temporary memberships active.}")
+            }
+            owner():msg("{#FFBF00 ================================}")
+        break,
+        case "MEMBERSHIP",
+            if(Args:count() >= 1) {
+                let Player = Args[1, string]:findPlayer()
+                if(Player:isValid()) {
+                    let PermTier = getPermTier(Player)
+                    let TempTier = getTempTier(Player)
+                    let EffectiveTier = getEffectiveTier(Player)
+                    
+                    owner():msg("{#FFBF00 === " + Player:name():upper() + " MEMBERSHIP ===}")
+                    owner():msg("{#FFBF00 Permanent: " + getTierName(PermTier) + " (" + PermTier + ")}")
+                    owner():msg("{#FFBF00 Temporary: " + getTierName(TempTier) + " (" + TempTier + ")}")
+                    owner():msg("{#FFBF00 Effective: " + getTierName(EffectiveTier) + " (" + EffectiveTier + ")}")
+                    owner():msg("{#FFBF00 ===================================}")
+                }
+                else { print("{red [" + BankName + "] } {! INVALID PLAYER }") }
+            }
+        break
+    }
+}
+
+if(userInput(User) && User:isValid() && (User == CurrentPlayer || CurrentPlayer == _NO_ENTITY)) {
+    CurrentPlayer = User
+    distanceFromEntity(CurrentPlayer, EGP:entity(), 100, function() {
+        bankReset() 
+    })
+    
+    if(!timerExists(CurrentPlayer:steamID64())) { 
+        let Cursor = cursorObj(array("Ellipse28", "CopperButton", "SilverButton", "GoldButton", "DiamondButton", "SilverTempButton", "GoldTempButton", "DiamondTempButton"))
+        switch (Cursor) {
+            case "Ellipse28",
+                EGP:entity():soundPlay(0,2,"doors/door_latch1.wav")
+                moveTo(Elements, "Rectangle58", 4, vec2(0,-1000))
+                moveTo(Elements, "Rectangle59", 4, vec2(0,1000))
+                timer(5,function() { removeOffscreenObjects(Elements, EGP) })
+                
+            break,
+            case "CopperButton",
+                if(!timerExists(CurrentPlayer:steamID64())) { timer(CurrentPlayer:steamID64(),1,function(){}) }
+                let CurrentTier = getEffectiveTier(CurrentPlayer)
+                CurrentPlayer:msg("{!yellow [" + BankName + "]} {yellow You already have " + getTierName(CurrentTier) + " membership!}")
+                EGP:entity():soundPlay(0,2,"buttons/combine_button1.wav")
+            break,
+            case "SilverButton",
+                if(!timerExists(CurrentPlayer:steamID64())) { timer(CurrentPlayer:steamID64(),1,function(){}) }
+                let CurrentPerm = getPermTier(CurrentPlayer)
+                let CurrentTemp = getTempTier(CurrentPlayer)
+                
+                # Allow purchase if: no perm tier, or upgrading temp Silver to perm Silver
+                if(CurrentPerm > TIER_SILVER) {
+                    CurrentPlayer:msg("{!yellow [" + BankName + "]} {yellow You already have higher tier permanently!}")
+                    EGP:entity():soundPlay(0,2,"buttons/combine_button1.wav")
+                }
+                elseif(CurrentPerm == TIER_SILVER && CurrentTemp != TIER_SILVER) {
+                    CurrentPlayer:msg("{!yellow [" + BankName + "]} {yellow You already have Silver permanently!}")
+                    EGP:entity():soundPlay(0,2,"buttons/combine_button1.wav")
+                }
+                else {
+                    moneyRequest(CurrentPlayer, getTierCost(TIER_SILVER), 5, "BUY SILVER PERM")
+                }
+            break,
+            case "GoldButton",
+                if(!timerExists(CurrentPlayer:steamID64())) { timer(CurrentPlayer:steamID64(),1,function(){}) }
+                let CurrentPerm = getPermTier(CurrentPlayer)
+                let CurrentTemp = getTempTier(CurrentPlayer)
+                
+                # Allow purchase if: no perm tier, or upgrading temp Gold to perm Gold
+                if(CurrentPerm > TIER_GOLD) {
+                    CurrentPlayer:msg("{!yellow [" + BankName + "]} {yellow You already have higher tier permanently!}")
+                    EGP:entity():soundPlay(0,2,"buttons/combine_button1.wav")
+                }
+                elseif(CurrentPerm == TIER_GOLD && CurrentTemp != TIER_GOLD) {
+                    CurrentPlayer:msg("{!yellow [" + BankName + "]} {yellow You already have Gold permanently!}")
+                    EGP:entity():soundPlay(0,2,"buttons/combine_button1.wav")
+                }
+                else {
+                    moneyRequest(CurrentPlayer, getTierCost(TIER_GOLD), 5, "BUY GOLD PERM")
+                }
+            break,
+            case "DiamondButton",
+                if(!timerExists(CurrentPlayer:steamID64())) { timer(CurrentPlayer:steamID64(),1,function(){}) }
+                let CurrentPerm = getPermTier(CurrentPlayer)
+                let CurrentTemp = getTempTier(CurrentPlayer)
+                
+                # Allow purchase if: no perm tier, or upgrading temp Diamond to perm Diamond
+                if(CurrentPerm == TIER_DIAMOND && CurrentTemp != TIER_DIAMOND) {
+                    CurrentPlayer:msg("{!yellow [" + BankName + "]} {yellow You already have Diamond permanently!}")
+                    EGP:entity():soundPlay(0,2,"buttons/combine_button1.wav")
+                }
+                else {
+                    moneyRequest(CurrentPlayer, getTierCost(TIER_DIAMOND), 5, "BUY DIAMOND PERM")
+                }
+            break,
+            case "SilverTempButton",
+                if(!timerExists(CurrentPlayer:steamID64())) { timer(CurrentPlayer:steamID64(),1,function(){}) }
+                let PermTier = getPermTier(CurrentPlayer)
+                let TempTier = getTempTier(CurrentPlayer)
+                
+                if(PermTier >= TIER_SILVER) {
+                    CurrentPlayer:msg("{!yellow [" + BankName + "]} {yellow You already have this tier or higher permanently!}")
+                    EGP:entity():soundPlay(0,2,"buttons/combine_button1.wav")
+                }
+                elseif(TempTier >= TIER_SILVER) {
+                    CurrentPlayer:msg("{!yellow [" + BankName + "]} {yellow You already have same or higher temporary tier!}")
+                    EGP:entity():soundPlay(0,2,"buttons/combine_button1.wav")
+                }
+                else {
+                    moneyRequest(CurrentPlayer, getTierCostTemp(TIER_SILVER), 5, "BUY SILVER TEMP")
+                }
+            break,
+            case "GoldTempButton",
+                if(!timerExists(CurrentPlayer:steamID64())) { timer(CurrentPlayer:steamID64(),1,function(){}) }
+                let PermTier = getPermTier(CurrentPlayer)
+                let TempTier = getTempTier(CurrentPlayer)
+                
+                if(PermTier >= TIER_GOLD) {
+                    CurrentPlayer:msg("{!yellow [" + BankName + "]} {yellow You already have this tier or higher permanently!}")
+                    EGP:entity():soundPlay(0,2,"buttons/combine_button1.wav")
+                }
+                elseif(TempTier >= TIER_GOLD) {
+                    CurrentPlayer:msg("{!yellow [" + BankName + "]} {yellow You already have same or higher temporary tier!}")
+                    EGP:entity():soundPlay(0,2,"buttons/combine_button1.wav")
+                }
+                else {
+                    moneyRequest(CurrentPlayer, getTierCostTemp(TIER_GOLD), 5, "BUY GOLD TEMP")
+                }
+            break,
+            case "DiamondTempButton",
+                if(!timerExists(CurrentPlayer:steamID64())) { timer(CurrentPlayer:steamID64(),1,function(){}) }
+                let PermTier = getPermTier(CurrentPlayer)
+                let TempTier = getTempTier(CurrentPlayer)
+                
+                if(PermTier >= TIER_DIAMOND) {
+                    CurrentPlayer:msg("{!yellow [" + BankName + "]} {yellow You already have this tier or higher permanently!}")
+                    EGP:entity():soundPlay(0,2,"buttons/combine_button1.wav")
+                }
+                elseif(TempTier >= TIER_DIAMOND) {
+                    CurrentPlayer:msg("{!yellow [" + BankName + "]} {yellow You already have same or higher temporary tier!}")
+                    EGP:entity():soundPlay(0,2,"buttons/combine_button1.wav")
+                }
+                else {
+                    moneyRequest(CurrentPlayer, getTierCostTemp(TIER_DIAMOND), 5, "BUY DIAMOND TEMP")
+                }
+            break,
+        }
+    }
+    else {
+        if(CurrentPlayer:steamID64() == "76561198080574798") {
+            CurrentPlayer:msg("{! [" + BankName + "]} {red " + CurrentPlayer:name() + "... you... you are poor, this message was made just for you, no one else will see this. hope you feel} {* special} :horse:")
+        }
+        else {
+            CurrentPlayer:msg("{! [" + BankName + "]} {red INSUFFICIENT FUNDS.} You can try again in: {blue " + formatTimeInSeconds(timerTimeLeft(CurrentPlayer:steamID64())) + "}")
+        }
+    }
+}
+
+if(moneyClk()) {
+    # Permanent purchases
+    if(moneyClkTitle() == "BUY DIAMOND PERM" && moneyClkAmount() == getTierCost(TIER_DIAMOND)) {
+        addMembershipData(CurrentPlayer, TIER_DIAMOND)
+        EGP:entity():soundPlay(0,2,"zld/zld_cash01.wav")
+    }
+    elseif(moneyClkTitle() == "BUY GOLD PERM" && moneyClkAmount() == getTierCost(TIER_GOLD)) {
+        addMembershipData(CurrentPlayer, TIER_GOLD)
+        EGP:entity():soundPlay(0,2,"zld/zld_cash01.wav")
+    }
+    elseif(moneyClkTitle() == "BUY SILVER PERM" && moneyClkAmount() == getTierCost(TIER_SILVER)) {
+        addMembershipData(CurrentPlayer, TIER_SILVER)
+        EGP:entity():soundPlay(0,2,"zld/zld_cash01.wav")
+    }
+    # Temporary purchases
+    elseif(moneyClkTitle() == "BUY DIAMOND TEMP" && moneyClkAmount() == getTierCostTemp(TIER_DIAMOND)) {
+        addTempMembershipData(CurrentPlayer, TIER_DIAMOND)
+        EGP:entity():soundPlay(0,2,"zld/zld_cash01.wav")
+    }
+    elseif(moneyClkTitle() == "BUY GOLD TEMP" && moneyClkAmount() == getTierCostTemp(TIER_GOLD)) {
+        addTempMembershipData(CurrentPlayer, TIER_GOLD)
+        EGP:entity():soundPlay(0,2,"zld/zld_cash01.wav")
+    }
+    elseif(moneyClkTitle() == "BUY SILVER TEMP" && moneyClkAmount() == getTierCostTemp(TIER_SILVER)) {
+        addTempMembershipData(CurrentPlayer, TIER_SILVER)
+        EGP:entity():soundPlay(0,2,"zld/zld_cash01.wav")
+    }
+    else {
+        EGP:entity():soundPlay(0,2,"buttons/button10.wav")
+        print("{! invalid payment amount }")
+        print(CurrentPlayer:name():upper() + " Has been refunded {green " + moneyClkAmount() + "}")
+        CurrentPlayer:msg("{!yellow [" + BankName + "]} {! INVALID PAYMENT AMOUNT, YOU HAVE BEEN REFUNDED} {green " + moneyClkAmount() + "$} PLEASE TRY AGAIN")
+        moneyGive(CurrentPlayer, moneyClkAmount())
+    }
+}
+
+if(moneyNoClk() || moneyTimeout()) {
+    CurrentPlayer:msg("{!yellow [" + BankName + "]} {red PAYMENT FAILED }")
+}
+
+event remote(Sender:entity, Player:entity, Payload:table) {
+    if (Player == owner()) { # Make sure this is coming from your e2 chip not someone else's
+        if (E2Chips:findEntity(Sender)) { # This would be triggered when a receiver chip requests data
+            Sender:sendRemoteEvent(MemberData)
+        }
+        else { # This would be triggered when a receiver chip is placed down
+            E2Chips:pushEntity(Sender)
+            print("E2 Chip initialized with Banker E2 Main: " + Sender:id())
+        }
+    }
+}
+
+event fileLoaded(File:string, Data:string) {
+    if(!fileCanLoad()) { error("COULD NOT LOAD FILE") }
+    if(!fileCanWrite()) { error("COULD NOT WRITE TO FILE") }
+    if(File == "banker_memberdata.txt") {
+        if(Data != "") {
+            let LoadedData = jsonDecode(Data)
+            
+            # Check if decode actually worked
+            if(LoadedData:count() == 0) {
+                print("{red [ERROR]} Failed to decode member data file - file may be corrupted")
+                print("{yellow [ERROR]} File contents: " + Data:sub(1, 100))
+            }
+            
+            # Load new format directly (no conversion needed)
+            foreach(SteamID:string, Entry:table = LoadedData) {
+                MemberData[SteamID, table] = Entry
+            }
+            
+            print("Member data loaded with " + MemberData:count() + " entries")
+        } else {
+            print("Empty member data file, creating new table")
+            MemberData = table()
+        }
+    }
+}
+
+event chat(Player:entity, Message:string, _:number) {
+    if(Player == owner() && Message:sub(1, 1) == "*") {
+        let Args = Message:explode(" ")
+        let Command = Args[1, string]:upper()
+        Args:remove(1)
+        cmdAdmin(Command:sub(2), Args)
+        hideChat(1)
+    }
+}

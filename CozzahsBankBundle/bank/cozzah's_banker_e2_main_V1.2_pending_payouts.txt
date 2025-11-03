@@ -1,0 +1,1149 @@
+@name Cozzah's Banker E2 Main
+#V1.3
+@inputs [HUD]:wirelink
+@outputs [TimeLeft OverallTotalTax OverallTotalProfit]:number
+
+@persist [MemberData Racks Guards PendingPayouts Elements]:table
+@persist [LastCustomerSteamID LastTierName LastTaxTotal LastProfitTotal]:string
+@persist [Snapshot TimeLeft CurrentRackID HUDX HUDY]:number
+@persist [CurrentCustomer]:entity
+@persist [JOB]:array
+
+#include "CozzahsBankBundle/includes/functions"
+#include "CozzahsBankBundle/includes/membership_configuration"
+
+if(first() || dupefinished()) {    
+    # ========== HUD POSITION SETTINGS ==========
+    #changes printer HUD from default position
+    #"HUDX = 100" = default HUD X position +100 pixels to the RIGHT
+    #"HUDX = -100" = default HUD X position +100 pixels to the LEFT
+    #"HUDY = 100" = default HUD Y position +100 pixels to the DOWN
+    #"HUDY = -100" = default HUD Y position +100 pixels to the UP
+    HUDX = 0
+    HUDY = 0
+    # ============================================
+    
+    #==================================DO NOT TOUCH PAST THIS POINT==================================#
+    
+    Snapshot = 0
+    CurrentRackID = 0
+    LastCustomerSteamID = ""
+    LastTierName = ""
+    LastTaxTotal = ""
+    LastProfitTotal = ""
+    
+    OverallTotalTax = 0
+    OverallTotalProfit = 0
+    
+    Elements = table()
+    MemberData = table()
+    Racks = table()
+    Guards = table()
+    PendingPayouts = table()
+    CurrentCustomer = _NO_ENTITY
+    JOB = array("Police Officer", "Police Chief", "SWAT", "SWAT Medic", "SWAT Sniper", "Secret Service", "CUSTOM_POLICE")
+}
+
+# Insurance price table
+function number getInsurancePrice(ItemName:string) {
+    if(ItemName == "Standard Rack") { return 25000 }
+    elseif(ItemName == "Pro Rack") { return 100000 }
+    elseif(ItemName == "Basic") { return 30000 }
+    elseif(ItemName == "Advanced") { return 60000 }
+    elseif(ItemName == "Tier 5") { return 75000 }
+    elseif(ItemName == "VIP") { return 200000 }
+    elseif(ItemName == "VIP+") { return 275000 }
+    elseif(ItemName == "Epic") { return 375000 }
+    elseif(ItemName == "Legendary") { return 450000 }
+    elseif(ItemName == "Halloween") { return 375000 }
+    elseif(ItemName == "BitMiner Rack") { return 25000 }
+    elseif(ItemName == "BitMiner Tower") { return 100000 }
+    elseif(ItemName == "BitMiner Tower Pro") { return 250000 }
+    return 0
+}
+
+function number table:get(...Args:array) {
+    const Name = Args[1, string]
+    if (Name) {
+        if (This:exists(Name)) {
+            return This[Name, number]   
+        }
+        const FreeID = This:flip():ncount()+1
+        This[Name, number] = FreeID
+        return FreeID
+    }
+    const FreeID = This:flip():ncount()+1
+    This[toString(FreeID), number] = FreeID
+    return FreeID
+}
+
+function void wirelink:clear() {
+    This:egpClear()
+    Elements:clear()
+}
+
+
+function egpobject text(ID:number, ARGS:table) {
+    return HUD:egpTextLayout(ID, ARGS)
+}
+
+function egpobject circle(ID:number, ARGS:table) {
+    if (ARGS["outline", number]) {
+        return HUD:egpCircleOutline(ID, ARGS)
+    }
+    return HUD:egpCircle(ID, ARGS)
+}
+
+function egpobject box(ID:number, ARGS:table) {
+    if (ARGS["outline", number]) {
+        return HUD:egpRoundedBoxOutline(ID, ARGS)
+    }
+    return HUD:egpRoundedBox(ID, ARGS)
+}
+
+function egpobject line(ID:number, ARGS:table) {
+    return HUD:egpBox(ID, ARGS)
+}
+
+# Removes only the printer hud objects so that the timer does not get cleared
+# Could of renamed the objects to have "printer" then just loop through all objects to remove them
+# This would make it easier  to add printer hud objects later but i do not see that being needed
+function removeCard() {
+    HUD:egpRemove(Elements:get("Ellipse88"))
+    HUD:egpRemove(Elements:get("Ellipse89"))
+    HUD:egpRemove(Elements:get("Ellipse90"))
+    HUD:egpRemove(Elements:get("Ellipse91"))
+    HUD:egpRemove(Elements:get("Rectangle381"))
+    HUD:egpRemove(Elements:get("Rectangle382"))
+    HUD:egpRemove(Elements:get("Rectangle383"))
+    HUD:egpRemove(Elements:get("Rectangle384"))
+    HUD:egpRemove(Elements:get("OWNERSRACK"))
+    HUD:egpRemove(Elements:get("CUSTOMER"))
+    HUD:egpRemove(Elements:get("COZZAH"))
+    HUD:egpRemove(Elements:get("TIER"))
+    HUD:egpRemove(Elements:get("DIAMOND"))
+    HUD:egpRemove(Elements:get("TAX"))
+    HUD:egpRemove(Elements:get("$999M"))
+    HUD:egpRemove(Elements:get("PROFIT"))
+    HUD:egpRemove(Elements:get("1" + "$999M"))
+    HUD:egpRemove(Elements:get("Rectangle385"))
+    HUD:egpRemove(Elements:get("Rectangle388"))
+    HUD:egpRemove(Elements:get("Rectangle389"))
+    HUD:egpRemove(Elements:get("Rectangle387")) 
+}
+
+# save overall totals to a file:
+function void saveOverallTotals() {
+    if(fileCanWrite()) {
+        let Data = table(
+            "overall_tax" = OverallTotalTax,
+            "overall_profit" = OverallTotalProfit
+        )
+        fileWrite("banker_overall_totals.txt", jsonEncode(Data, 1))
+    }
+}
+
+# load overall totals from file:
+function void loadOverallTotals() {
+    if(fileCanLoad()) {
+        fileLoad("banker_overall_totals.txt")
+    }
+}
+
+function number checkRack(Entity:entity) {
+    if (Entity:isValid()) {
+        let Class = Entity:keyvalues()["classname", string]
+        return Class:startsWith("printer_rack") || Class:startsWith("bitminer_tower")
+    }
+    return 0
+}
+
+function void checkProfit(Customer:entity) {
+    let Amount = owner():money() - Snapshot
+    
+    if(Amount > 1000) {        
+        let Name = Customer:name():upper()
+        let AimEntity = owner():aimEntity()
+        let RackID = AimEntity:id()
+        let SteamID = Customer:steamID()
+
+        # Use effective tier (highest of perm or temp) for tax calculation
+        let Tax = Guards:exists(SteamID) ? 0 : getTax(Customer, MemberData)
+        let TaxAmount = Amount * Tax
+        let Profit = Amount - TaxAmount
+        # Update overall totals
+        OverallTotalTax += TaxAmount
+        OverallTotalProfit += Profit
+        saveOverallTotals()
+        
+        if(Amount == getTierCost(TIER_SILVER) || Amount == getTierCost(TIER_GOLD) || Amount == getTierCost(TIER_DIAMOND) || Amount == getTierCostTemp(TIER_SILVER) || Amount == getTierCostTemp(TIER_GOLD) || Amount == getTierCostTemp(TIER_DIAMOND)) {
+            owner():msg("{!yellow [" + BankName + "]} {! Auto Payment aborted due to being detected as a membership payment}. if this is a mistake use chat command {yellow '*WIRE " + Customer:name() + " " + Profit + "'}")
+            break
+        }
+        
+        # Update the tax total AND profit total for this rack
+        if(Racks[RackID, table]) {
+            let CurrentTax = Racks[RackID, table]["tax_total", number]
+            let CurrentProfit = Racks[RackID, table]["profit_total", number]
+            
+            Racks[RackID, table]["tax_total", number] = CurrentTax + TaxAmount
+            Racks[RackID, table]["profit_total", number] = CurrentProfit + Profit
+        }
+        
+        owner():msg("{!yellow [" + BankName + "]} You collected: {green $" + formatNumber(TaxAmount) + "} in taxes.")
+        
+        # Check if there's already a pending payout for this player
+        if(!PendingPayouts:exists(SteamID)) {
+            # Create new payout entry
+            PendingPayouts[SteamID, table] = table(
+                "total_tax" = TaxAmount,
+                "total_profit" = Profit,
+                "rack_count" = 1,
+                "tax_rate" = Tax,
+                "name" = Name
+            )
+            
+            # Start timer to send message after 5 seconds
+            timer("payout_" + SteamID, 5, function() {
+                if(PendingPayouts:exists(SteamID)) {
+                    let PayoutData = PendingPayouts[SteamID, table]
+                    let FinalTaxAmount = PayoutData["total_tax", number]
+                    let FinalProfit = PayoutData["total_profit", number]
+                    let RackCount = PayoutData["rack_count", number]
+                    let FinalTax = PayoutData["tax_rate", number]
+                    let FinalName = PayoutData["name", string]
+                    
+                    let FinalCustomer = SteamID:findPlayer()
+                    if(FinalCustomer:isValid()) {
+                        let PlayerTier = getEffectiveTier(FinalCustomer, MemberData)
+                        let TierName = getTierName(PlayerTier):upper()
+                        let Colour = getTierColor(PlayerTier)
+                        
+                        let RackText = RackCount > 1 ? " {blue from " + RackCount + " racks}" : ""
+                        
+                        # Get lifetime totals from rack data
+                        let LifetimeTax = 0
+                        let LifetimeProfit = 0
+                        
+                        foreach(_:number, RackData:table = Racks) {
+                            if(RackData["owner", string] == SteamID) {
+                                LifetimeTax += RackData["tax_total", number]
+                                LifetimeProfit += RackData["profit_total", number]
+                            }
+                        }
+                        
+                        # Send main payment message
+                        FinalCustomer:msg("{!yellow [" + BankName + "]} Thanks for banking with us, {yellow " + FinalName + "}! You received: {green $" + formatNumber(FinalProfit) + "}" + RackText)
+                        
+                        # Send tier-specific tax and lifetime info
+                        if(Guards:exists(SteamID)) {
+                            FinalCustomer:msg("{!yellow [" + BankName + "]} Tax paid: {green $" + formatNumber(FinalTaxAmount) + " (" + (FinalTax*100) + "%)} as {blue security guard}")
+                        } 
+                        elseif(PlayerTier == TIER_DIAMOND) {
+                            FinalCustomer:msg("{!yellow [" + BankName + "]} Tax: {green $" + formatNumber(FinalTaxAmount) + " (" + (FinalTax*100) + "%)} {" + Colour + " " + TierName + "} | Profit {green $" + formatNumber(LifetimeProfit) + "}")
+                        } 
+                        else {
+                            # Non-Diamond tier - show upgrade incentive
+                            let DiamondTax = getTierTax(TIER_DIAMOND)
+                            let PotentialSavings = LifetimeTax - (LifetimeProfit + LifetimeTax) * DiamondTax
+                            
+                            if(PotentialSavings > 5000000) {
+                                FinalCustomer:msg("{!yellow [" + BankName + "]} Tax: {red $" + formatNumber(FinalTaxAmount) + " (" + (FinalTax*100) + "%)} {" + Colour + " " + TierName + "} | Lifetime: Tax {red $" + formatNumber(LifetimeTax) + "}  Profit {green $" + formatNumber(LifetimeProfit) + "} | {! Upgrade to Diamond and save $" + formatNumber(PotentialSavings) + "!}")
+                            } else {
+                                FinalCustomer:msg("{!yellow [" + BankName + "]} Tax: {red $" + formatNumber(FinalTaxAmount) + " (" + (FinalTax*100) + "%)} {" + Colour + " " + TierName + "} | Lifetime: Tax {red $" + formatNumber(LifetimeTax) + "}  Profit {green $" + formatNumber(LifetimeProfit) + "}")
+                            }
+                        }
+                        
+                        moneyGive(FinalCustomer, FinalProfit)
+                    }
+                    
+                    # Clear the pending payout
+                    PendingPayouts:remove(SteamID)
+                }
+            })
+        }
+        else {
+            # Add to existing payout
+            let PayoutData = PendingPayouts[SteamID, table]
+            PayoutData["total_tax", number] = PayoutData["total_tax", number] + TaxAmount
+            PayoutData["total_profit", number] = PayoutData["total_profit", number] + Profit
+            PayoutData["rack_count", number] = PayoutData["rack_count", number] + 1
+        }
+
+        Snapshot = 0
+    }
+}
+
+function void checkCollection() {
+    let AimEntity = owner():aimEntity()
+    if(checkRack(AimEntity)) {
+        let Customer = _NO_ENTITY 
+        let RackID = AimEntity:id()
+        
+        # Try to get customer from table first
+        if(Racks[RackID, table]) {
+            let RackData = Racks[RackID, table]
+            let SteamID = RackData["owner", string]
+            Customer = SteamID:findPlayer()
+            
+            # If player not found by SteamID, fall back to entity owner
+            if(!Customer:isValid()) {
+                Customer = AimEntity:owner()
+            }
+        }
+        else {
+            # If rack not in table, clear and reset tracking variables
+            if(CurrentCustomer:isValid() || CurrentRackID != 0) {
+                CurrentCustomer = _NO_ENTITY
+                CurrentRackID = 0
+                Snapshot = 0
+                LastCustomerSteamID = ""
+                LastTierName = ""
+                LastTaxTotal = ""
+                LastProfitTotal = ""
+                removeCard()
+            }
+            return
+        }
+        
+        # Check if customer is valid
+        if(Customer:isValid()) {
+            let SteamID = Customer:steamID()
+            let PlayerTier = getEffectiveTier(Customer, MemberData)
+            let TierName = Guards:exists(SteamID) ? "GUARD" : getTierName(PlayerTier):upper()
+            let TierR = Guards:exists(SteamID) ? 20 : getTierColorR(PlayerTier)
+            let TierG = Guards:exists(SteamID) ? 20 : getTierColorG(PlayerTier)
+            let TierB = Guards:exists(SteamID) ? 200 : getTierColorB(PlayerTier)
+            
+            # Get tax and profit totals
+            let TaxTotal = 0
+            let ProfitTotal = 0
+            if(Racks[RackID, table]) {
+                TaxTotal = Racks[RackID, table]["tax_total", number]
+                ProfitTotal = Racks[RackID, table]["profit_total", number]
+            }
+            
+            let TaxTotalStr = "$" + formatNumber(TaxTotal)
+            let ProfitTotalStr = "$" + formatNumber(ProfitTotal)
+            
+            # Check if any data changed
+            if(Customer != CurrentCustomer || RackID != CurrentRackID || 
+               SteamID != LastCustomerSteamID || TierName != LastTierName || 
+               TaxTotalStr != LastTaxTotal || ProfitTotalStr != LastProfitTotal) {
+                
+                # Update tracking variables
+                CurrentCustomer = Customer
+                CurrentRackID = RackID
+                LastCustomerSteamID = SteamID
+                LastTierName = TierName
+                LastTaxTotal = TaxTotalStr
+                LastProfitTotal = ProfitTotalStr
+                Snapshot = owner():money()
+                
+                # Determine entity type
+                let Class = AimEntity:keyvalues()["classname", string]
+                let EntityType = ""
+                if(Class:startsWith("printer_rack")) { EntityType = "RACK" }
+                elseif(Class:startsWith("bitminer_tower")) { EntityType = "TOWER" }
+                
+                # Redraw HUD with exact positioning from Figma using HUDX and HUDY offsets
+                circle(Elements:get("Ellipse88"), table("x"=HUDX+327.5, "y"=HUDY+470.5, "w"=21.5, "h"=21.5, "r"=TierR, "g"=TierG, "b"=TierB))
+                circle(Elements:get("Ellipse89"), table("x"=HUDX+327.5, "y"=HUDY+857.5, "w"=21.5, "h"=21.5, "r"=TierR, "g"=TierG, "b"=TierB))
+                circle(Elements:get("Ellipse90"), table("x"=HUDX+68.5, "y"=HUDY+470.5, "w"=21.5, "h"=21.5, "r"=TierR, "g"=TierG, "b"=TierB))
+                circle(Elements:get("Ellipse91"), table("x"=HUDX+68.5, "y"=HUDY+857.5, "w"=21.5, "h"=21.5, "r"=TierR, "g"=TierG, "b"=TierB))
+                box(Elements:get("Rectangle381"), table("x"=HUDX+71.0, "y"=HUDY+449.0, "w"=259.0, "h"=430.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+                box(Elements:get("Rectangle382"), table("x"=HUDX+47.0, "y"=HUDY+470.0, "w"=302.0, "h"=388.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+                box(Elements:get("Rectangle383"), table("x"=HUDX+71.0, "y"=HUDY+449.0, "w"=259.0, "h"=43.0, "r"=89, "g"=89, "b"=89, "radius"=0))
+                box(Elements:get("Rectangle384"), table("x"=HUDX+47.0, "y"=HUDY+470.0, "w"=302.0, "h"=22.0, "r"=89, "g"=89, "b"=89, "radius"=0))
+                text(Elements:get("OWNERSRACK"), table("text"=limitNameLength(Customer:name():upper(),9) + "'S " + EntityType, "x"=HUDX+71.0, "y"=HUDY+449.0, "w"= 259.0, "h"=43.0, "r"=255, "g"=255, "b"=255, "size"=27, "halign"=1, "valign"=1))
+                text(Elements:get("CUSTOMER"), table("text"="CUSTOMER:", "x"=HUDX+47.0, "y"=HUDY+492.0, "w"= 302.0, "h"=43.0, "r"=255, "g"=215, "b"=0, "size"=27, "halign"=1, "valign"=1))
+                text(Elements:get("COZZAH"), table("text"=limitNameLength(Customer:name():upper(),16), "x"=HUDX+47.0, "y"=HUDY+535.0, "w"= 302.0, "h"=43.0, "r"=255, "g"=215, "b"=0, "size"=27, "halign"=1, "valign"=1))
+                text(Elements:get("TIER"), table("text"="TIER:", "x"=HUDX+47.0, "y"=HUDY+578.0, "w"= 302.0, "h"=43.0, "r"=TierR, "g"=TierG, "b"=TierB, "size"=27, "halign"=1, "valign"=1))
+                text(Elements:get("DIAMOND"), table("text"=TierName, "x"=HUDX+47.0, "y"=HUDY+621.0, "w"= 302.0, "h"=43.0, "r"=TierR, "g"=TierG, "b"=TierB, "size"=27, "halign"=1, "valign"=1))
+                text(Elements:get("TAX"), table("text"="TOTAL TAX:", "x"=HUDX+47.0, "y"=HUDY+664.0, "w"= 302.0, "h"=43.0, "r"=200, "g"=0, "b"=0, "size"=27, "halign"=1, "valign"=1))
+                text(Elements:get("$999M"), table("text"=TaxTotalStr, "x"=HUDX+47.0, "y"=HUDY+707.0, "w"= 302.0, "h"=43.0, "r"=200, "g"=0, "b"=0, "size"=27, "halign"=1, "valign"=1))
+                text(Elements:get("PROFIT"), table("text"="TOTAL PROFIT:", "x"=HUDX+47.0, "y"=HUDY+750.0, "w"= 302.0, "h"=43.0, "r"=30, "g"=178, "b"=0, "size"=27, "halign"=1, "valign"=1))
+                text(Elements:get("1" + "$999M"), table("text"=ProfitTotalStr, "x"=HUDX+47.0, "y"=HUDY+793.0, "w"= 302.0, "h"=43.0, "r"=30, "g"=178, "b"=0, "size"=27, "halign"=1, "valign"=1))
+                box(Elements:get("Rectangle385"), table("x"=HUDX+59.0, "y"=HUDY+575.0, "w"=278.0, "h"=5.0, "r"=255, "g"=215, "b"=0, "radius"=0))
+                box(Elements:get("Rectangle388"), table("x"=HUDX+59.0, "y"=HUDY+747.0, "w"=278.0, "h"=5.0, "r"=200, "g"=0, "b"=0, "radius"=0))
+                box(Elements:get("Rectangle389"), table("x"=HUDX+59.0, "y"=HUDY+833.0, "w"=278.0, "h"=5.0, "r"=30, "g"=178, "b"=0, "radius"=0))
+                box(Elements:get("Rectangle387"), table("x"=HUDX+59.0, "y"=HUDY+661.0, "w"=278.0, "h"=5.0, "r"=TierR, "g"=TierG, "b"=TierB, "radius"=0))
+            }
+            
+            # Continue checking for profit
+            if(Snapshot) {
+                checkProfit(Customer)
+            }
+        }
+        else {
+            # Rack is assigned but customer is invalid - clear HUD and reset tracking variables
+            if(CurrentCustomer:isValid() || CurrentRackID != 0) {
+                CurrentCustomer = _NO_ENTITY
+                CurrentRackID = 0
+                Snapshot = 0
+                LastCustomerSteamID = ""
+                LastTierName = ""
+                LastTaxTotal = ""
+                LastProfitTotal = ""
+                removeCard()
+            }
+        }
+    }
+    else {
+        # Not looking at a rack - clear if we had something displayed before
+        if(CurrentCustomer:isValid() || CurrentRackID != 0) {
+            CurrentCustomer = _NO_ENTITY
+            CurrentRackID = 0
+            Snapshot = 0
+            LastCustomerSteamID = ""
+            LastTierName = ""
+            LastTaxTotal = ""
+            LastProfitTotal = ""
+            removeCard()
+        }
+    }
+}
+
+# Function to set a manual owner for the currently aimed rack
+function void setRackOwner(Player:entity) {
+    if(!Player:isValid()) {
+        owner():msg("{!yellow [" + BankName + "]} {red Invalid player specified.}")
+        return
+    }
+    
+    # Get the currently aimed entity
+    let AimEntity = owner():aimEntity()
+    if(!AimEntity:isValid() || !checkRack(AimEntity)) {
+        owner():msg("{!yellow [" + BankName + "]} {red You need to look at a rack first.}")
+        return
+    }
+    
+    let RackID = AimEntity:id()
+    
+    # Update or create the rack entry in the Racks table
+    if(Racks[RackID, table]) {
+        # Update existing rack entry
+        let OldOwnerSteamID = Racks[RackID, table]["owner", string]
+        let OldOwner = OldOwnerSteamID:findPlayer()
+        let OldOwnerName = OldOwner:isValid() ? OldOwner:name() : "Unknown"
+        
+        Racks[RackID, table]["owner", string] = Player:steamID()
+        owner():msg("{!yellow [" + BankName + "]} {green Rack owner updated from " + OldOwnerName + " to " + Player:name() + "}")
+    } else {
+        # Create new rack entry
+        Racks[RackID, table] = table()
+        Racks[RackID, table]["owner", string] = Player:steamID()
+        Racks[RackID, table]["rack_type", string] = "Standard Rack" # Default type
+        owner():msg("{!yellow [" + BankName + "]} {green Rack assigned to " + Player:name() + "}")
+    }
+    # Inform the player that they are now the owner
+    Player:msg("{!yellow [" + BankName + "]} {green " + owner():name() + " has assigned you as the owner of a rack}")
+}
+
+# Calculate total insurance value for a player
+function number calculatePlayerInsurance(SteamID:string) {
+    let TotalInsurance = 0
+    
+    # Get player's printer data (stored by entity ID)
+    if(Racks:exists("player_printers")) {
+        let AllPrinters = Racks["player_printers", table]
+        if(AllPrinters:exists(SteamID)) {
+            let PlayerPrinters = AllPrinters[SteamID, table]
+            
+            # Add up all printer values (each entry is a unique entity)
+            foreach(_:number, PrinterInfo:table = PlayerPrinters) {
+                let PrinterType = PrinterInfo["type", string]
+                let Price = getInsurancePrice(PrinterType)
+                TotalInsurance += Price
+            }
+        }
+    }
+    
+    # Add rack values
+    foreach(_:number, RackData:table = Racks) {
+        if(RackData["owner", string] == SteamID) {
+            let RackType = RackData["rack_type", string]
+            TotalInsurance += getInsurancePrice(RackType)
+        }
+    }
+    
+    return TotalInsurance
+}
+
+# Function to pay insurance to all customers
+function void payInsurance() {
+    let ProcessedPlayers = table()
+    let TotalPaid = 0
+    let PlayerCount = 0
+    
+    owner():msg("{!yellow [" + BankName + "]} {green Starting insurance payouts...}")
+    
+    # Process each rack owner
+    foreach(_:number, RackData:table = Racks) {
+        if(RackData["owner", string]) {
+            let SteamID = RackData["owner", string]
+            
+            # Only process each player once
+            if(!ProcessedPlayers:exists(SteamID)) {
+                let Customer = SteamID:findPlayer()
+                
+                # Calculate total insurance value
+                let InsuranceValue = calculatePlayerInsurance(SteamID)
+                
+                if(InsuranceValue > 0) {
+                    # Get player's insurance rate based on tier
+                    let InsuranceRate = 0
+                    if(Customer:isValid()) {
+                        let PlayerTier = getEffectiveTier(Customer, MemberData)
+                        InsuranceRate = getTierInsurance(PlayerTier)
+                    }
+                    
+                    let Payout = InsuranceValue * InsuranceRate
+                    
+                    if(Customer:isValid()) {
+                        moneyGive(Customer, Payout)
+                        Customer:msg("{!yellow [" + BankName + " INSURANCE]} {green You received $" + formatNumber(Payout) + " insurance payout}")
+                        Customer:msg("{!yellow [" + BankName + "]} {yellow Item Value: $" + formatNumber(InsuranceValue) + " | Insurance Rate: " + (InsuranceRate*100) + "%}")
+                        
+                        TotalPaid += Payout
+                        PlayerCount++
+                        
+                        owner():msg("{green " + Customer:name() + ":} $" + formatNumber(Payout) + " (" + (InsuranceRate*100) + "% of $" + formatNumber(InsuranceValue) + ")")
+                    } else {
+                        owner():msg("{yellow " + SteamID + " (OFFLINE):} Would receive $" + formatNumber(Payout) + " when they connect")
+                    }
+                }
+                
+                ProcessedPlayers[SteamID, number] = 1
+            }
+        }
+    }
+    
+    if(PlayerCount > 0) {
+        owner():msg("{!yellow [" + BankName + "]} {green Paid $" + formatNumber(TotalPaid) + " to " + PlayerCount + " customers}")
+        Racks = table()
+    }
+    else {
+        owner():msg("{!yellow [" + BankName + "]} {red No customers found or no insurance value}")
+    }
+}
+
+# Manual printer setter command (fixed for entity ID system)
+function void setPlayerPrinters(Player:entity, PrinterType:string, Count:number) {
+    if(!Player:isValid()) {
+        owner():msg("{!yellow [" + BankName + "]} {red Invalid player}")
+        return
+    }
+    
+    let SteamID = Player:steamID()
+    
+    # Initialize storage if needed
+    if(!Racks:exists("player_printers")) {
+        Racks["player_printers", table] = table()
+    }
+    
+    let AllPrinters = Racks["player_printers", table]
+    if(!AllPrinters:exists(SteamID)) {
+        AllPrinters[SteamID, table] = table()
+    }
+    
+    let PlayerPrinters = AllPrinters[SteamID, table]
+    
+    if(Count > 0) {
+        # First, remove all existing printers of this type
+        let ToRemove = array()
+        foreach(PrinterID:number, PrinterInfo:table = PlayerPrinters) {
+            if(PrinterInfo["type", string] == PrinterType) {
+                ToRemove:pushNumber(PrinterID)
+            }
+        }
+        foreach(_:number, ID:number = ToRemove) {
+            PlayerPrinters:remove(ID)
+        }
+        
+        # Now add the new count with fake entity IDs
+        # Use negative IDs to avoid conflicts with real entity IDs
+        # Start from a high negative number and count down
+        let FakeIDStart = -1000000 - (SteamID:toNumber() % 100000) * 1000
+        let UsedIDs = table()
+        
+        # Check what fake IDs are already in use for this player
+        foreach(PrinterID:number, _:table = PlayerPrinters) {
+            if(PrinterID < 0) {
+                UsedIDs[PrinterID, number] = 1
+            }
+        }
+        
+        # Add new printers with unique fake IDs
+        let AddedCount = 0
+        let CurrentFakeID = FakeIDStart
+        while(AddedCount < Count) {
+            # Find next unused fake ID
+            while(UsedIDs:exists(CurrentFakeID)) {
+                CurrentFakeID--
+            }
+            
+            PlayerPrinters[CurrentFakeID, table] = table("type" = PrinterType)
+            UsedIDs[CurrentFakeID, number] = 1
+            CurrentFakeID--
+            AddedCount++
+        }
+        
+        owner():msg("{!yellow [" + BankName + "]} {green Set " + Player:name() + "'s " + PrinterType + " count to " + Count + "}")
+        Player:msg("{!yellow [" + BankName + "]} {green Your " + PrinterType + " count has been set to " + Count + " by} {yellow " + owner():name() + "}.")
+    } else {
+        # Remove all printers of this type
+        let ToRemove = array()
+        foreach(PrinterID:number, PrinterInfo:table = PlayerPrinters) {
+            if(PrinterInfo["type", string] == PrinterType) {
+                ToRemove:pushNumber(PrinterID)
+            }
+        }
+        foreach(_:number, ID:number = ToRemove) {
+            PlayerPrinters:remove(ID)
+        }
+        
+        owner():msg("{!yellow [" + BankName + "]} {green Removed all " + PrinterType + " from " + Player:name())
+    }
+}
+
+# sends all customers a bank closing notifications
+function void close(Minutes:number, Amount:number) {
+    let Time = 60 * Minutes
+    let NotifNum = Amount
+    let Interval = Time / NotifNum
+    print("Time = " + Time)
+    print("NotifNum = " + NotifNum)
+    print("Interval = " + Interval)
+    
+    function void sendMessage(TimeLeft:string) {
+        foreach(_:number, RackData:table = Racks) {
+            let SteamID = RackData["owner", string]
+            let Customer = SteamID:findPlayer()
+            if(Customer:isValid()) {
+                Customer:msg("{! [" + BankName + " ALERT]}  " + BankName:lower() + " bank will be closing in {yellow " + TimeLeft + "}. Please pick up your printers or they will be {red destroyed}.")
+            }
+        }
+    }
+    
+    # Send the first message immediately when function is called
+    let TimeFormat = formatTimeInSeconds(Time)
+    if(TimeFormat != "") {
+        sendMessage(TimeFormat)
+        print("{! [" + BankName + " ALERT]} Closing notification sent. {yellow " + TimeFormat + "} till closing.")
+        Time = Time - Interval
+    }
+    else { print("{! [ERROR] } {red 'TimeFormat' = null }") }
+    
+    timer("closing", Interval, NotifNum, function() {
+        if(Time > 0) {
+            let TimeFormat = formatTimeInSeconds(Time)
+            if(TimeFormat != "") {
+                sendMessage(TimeFormat)
+                print("{! [" + BankName + " ALERT]} Closing notification sent. {yellow " + TimeFormat + "} till closing.") 
+                Time = Time - Interval
+            }
+            else { print("{! [ERROR] } {red 'TimeFormat' = null }") }
+        }
+        else {
+            stoptimer("closing")
+            foreach(_:number, RackData:table = Racks) {
+                let SteamID = RackData["owner", string]
+                let Customer = SteamID:findPlayer()
+                if(Customer:isValid()) {
+                    Customer:msg("{! [" + BankName + " ALERT]} {red  " + BankName:lower() + " bank has closed. If you have not picked up your printers they will now be } {! destroyed}{red .}")
+                }
+            }
+            print("{! [" + BankName + " ALERT]} Bank closed, you may {! destroy } remaining printers") 
+        }
+    })
+}
+
+# Function to display all customers and their tiers
+function void displayAllCustomers() {
+    let CustomerCount = 0
+    
+    # Header display
+    owner():msg("{#FFBF00 === CUSTOMER LIST ===}")
+    
+    # Loop through all racks
+    foreach(_:number, RackData:table = Racks) {
+        if(RackData["owner", string]) {
+            let SteamID = RackData["owner", string]
+            let Customer = SteamID:findPlayer()
+            
+            if(Customer:isValid()) {
+                # Get tier name for this customer
+                let PlayerTier = getMemberDataTier(Customer, MemberData)
+                let TierName = getTierName(PlayerTier):upper()
+                let TierColor = getTierColor(PlayerTier)
+                let TaxTotal = RackData["tax_total", number] || 0
+                let ProfitTotal = RackData["profit_total", number] || 0
+                
+                # Display customer info with color based on tier
+                owner():msg("{" + TierColor + " " + Customer:name() + " - " + TierName + " TIER} - Tax: {red $" + formatNumber(TaxTotal) + "} | Profit: {green $" + formatNumber(ProfitTotal) + "}")
+                
+                CustomerCount++
+            }
+            else {
+                print("{! COULD NOT FIND PLAYER} {blue '" + SteamID + "}.")
+            }
+        }
+    }
+    
+    # Display count message if no customers found
+    if(CustomerCount == 0) {
+        owner():msg("{#FFBF00 No active customers found.}")
+    }
+    else {
+        owner():msg("{#FFBF00 Total Customers: }{green " + CustomerCount + "}")
+    }
+    
+    # Footer display
+    owner():msg("{#FFBF00 ====================}")
+}
+
+# Function to display total tax profit from all racks
+function void displayTotalProfit() {
+    let TotalTax = 0
+    let TotalProfit = 0
+    let RackCount = 0
+    
+    # Loop through all racks and sum their totals
+    foreach(_:number, RackData:table = Racks) {
+        if(RackData["tax_total", number]) {
+            TotalTax += RackData["tax_total", number]
+            TotalProfit += RackData["profit_total", number]
+            RackCount++
+        }
+    }
+    
+    # Header display
+    owner():msg("{#FFBF00 === PROFIT SUMMARY ===}")
+    
+    # Show session totals
+    owner():msg("{#FFBF00 Session Tax Collected: }{green $" + formatNumber(TotalTax) + "}")
+    owner():msg("{#FFBF00 Session Profit Paid Out: }{green $" + formatNumber(TotalProfit) + "}")
+    owner():msg("{#FFBF00 Number of Racks: }{green " + RackCount + "}")
+    
+    # Calculate averages
+    if(RackCount > 0) {
+        let AverageTaxPerRack = TotalTax / RackCount
+        let AverageProfitPerRack = TotalProfit / RackCount
+        owner():msg("{#FFBF00 Average Tax per Rack: }{green $" + formatNumber(AverageTaxPerRack) + "}")
+        owner():msg("{#FFBF00 Average} {blue Player} {#FFBF00 Profit per Rack: }{green $" + formatNumber(AverageProfitPerRack) + "}")
+    }
+    
+    # Separator
+    owner():msg("{#FFBF00 =====================}")
+    
+    # Show overall (all-time) totals
+    owner():msg("{#FFBF00 === ALL-TIME TOTALS ===}")
+    owner():msg("{#FFBF00 Overall Tax Collected: }{green $" + formatNumber(OverallTotalTax) + "}")
+    owner():msg("{#FFBF00 Overall Profit Paid Out: }{green $" + formatNumber(OverallTotalProfit) + "}")
+    owner():msg("{#FFBF00 Total Revenue: }{green $" + formatNumber(OverallTotalTax + OverallTotalProfit) + "}")
+    
+    # Footer display
+    owner():msg("{#FFBF00 =====================}")
+}
+
+# Function to send raided notification to all unique rack owners
+function void sendRaidedNotification() {
+    let NotifiedPlayers = table()
+    let PlayerCount = 0
+    
+    # Loop through all racks
+    foreach(_:number, RackData:table = Racks) {
+        if(RackData["owner", string]) {
+            let SteamID = RackData["owner", string]
+            
+            # Only notify each player once
+            if(!NotifiedPlayers:exists(SteamID)) {
+                let Customer = SteamID:findPlayer()
+                
+                if(Customer:isValid()) {
+                    Customer:msg("{!yellow [" + BankName + " ALERT]} {red The bank has been raided!} You will receive your {green insurance money} shortly.")
+                    NotifiedPlayers[SteamID, number] = 1
+                    PlayerCount++
+                }
+            }
+        }
+    }
+    
+    # Confirm to admin
+    if(PlayerCount > 0) {
+        owner():msg("{!yellow [" + BankName + "]} {green Raided notification sent to " + PlayerCount + " unique customers.}")
+    } else {
+        owner():msg("{!yellow [" + BankName + "]} {red No customers found to notify.}")
+    }
+}
+
+# Display a player's insurance information
+function void displayPlayerInsurance(Player:entity) {
+    if(!Player:isValid()) {
+        owner():msg("{!yellow [" + BankName + "]} {red Invalid player}")
+        return
+    }
+    
+    let SteamID = Player:steamID()
+    let TotalValue = 0
+    
+    owner():msg("{#FFBF00 === " + Player:name():upper() + " INSURANCE ===}")
+    
+    # Show printers (stored by entity ID in new system)
+    if(Racks:exists("player_printers")) {
+        let AllPrinters = Racks["player_printers", table]
+        
+        if(AllPrinters:exists(SteamID)) {
+            let PlayerPrinters = AllPrinters[SteamID, table]
+            
+            owner():msg("{#FFBF00 PRINTERS:}")
+            
+            # Count printers by type first (since they're stored by entity ID)
+            let PrinterCounts = table()
+            foreach(_:number, PrinterInfo:table = PlayerPrinters) {
+                let PrinterType = PrinterInfo["type", string]
+                if(PrinterCounts:exists(PrinterType)) {
+                    PrinterCounts[PrinterType, number] = PrinterCounts[PrinterType, number] + 1
+                } else {
+                    PrinterCounts[PrinterType, number] = 1
+                }
+            }
+            
+            # Display counts by type with proper color coding
+            foreach(PrinterName:string, Count:number = PrinterCounts) {
+                let Price = getInsurancePrice(PrinterName)
+                let SubTotal = Price * Count
+                TotalValue += SubTotal
+                
+                # Determine color based on printer type
+                let ColourHex = "#FFFFFF"
+                if(PrinterName:lower():find("epic")) { ColourHex = "#571f82" }
+                elseif(PrinterName:lower():find("basic")) { ColourHex = "#20bc92" }
+                elseif(PrinterName:lower():find("tier 5") | PrinterName:lower():find("tier5")) { print("T5 = " + PrinterName), ColourHex = "#ff1d1b" }
+                elseif(PrinterName:lower():find("legendary")) { ColourHex = "#e0b433" }
+                elseif(PrinterName:lower():find("advanced")) { ColourHex = "#22abe2" }
+                elseif(PrinterName:lower():find("vip+")) { ColourHex = "#7f1d6e" }
+                elseif(PrinterName:lower():find("vip")) { ColourHex = "#9f1d1d" }
+                elseif(PrinterName:lower():find("bitminer")) { ColourHex = "#D9D9D9" }
+                
+                owner():msg("  {" + ColourHex + " " + PrinterName + " x" + Count + ":} {green $" + formatNumber(SubTotal) + "}")
+            }
+        } else {
+            owner():msg("{#FFBF00 PRINTERS:}")
+            owner():msg("  {red None}")
+        }
+    }
+    else {
+        owner():msg("{#FFBF00 PRINTERS:}")
+        owner():msg("  {red None}")
+    }
+    
+    # Show racks
+    let RackCount = 0
+    owner():msg("{#FFBF00 RACKS:}")
+    foreach(_:number, RackData:table = Racks) {
+        if(RackData["owner", string] == SteamID) {
+            let RackType = RackData["rack_type", string]
+            let RackPrice = getInsurancePrice(RackType)
+            TotalValue += RackPrice
+            RackCount++
+            owner():msg("  {green " + RackType + ": $" + formatNumber(RackPrice) + "}")
+        }
+    }
+    
+    if(RackCount == 0) {
+        owner():msg("  None")
+    }
+    
+    # Calculate insurance payout
+    let PlayerTier = getEffectiveTier(Player, MemberData)
+    let InsuranceRate = getTierInsurance(PlayerTier)
+    let Payout = TotalValue * InsuranceRate
+    
+    owner():msg("{#FFBF00 TOTAL VALUE: }{green $" + formatNumber(TotalValue) + "}")
+    owner():msg("{#FFBF00 INSURANCE RATE: }{green " + (InsuranceRate*100) + "%} (" + getTierName(PlayerTier) + " tier)")
+    owner():msg("{#FFBF00 PAYOUT: }{green $" + formatNumber(Payout) + "}")
+    owner():msg("{#FFBF00 ================================}")
+}
+
+function void timerdraw() {
+    box(Elements:get("Rectangle307"), table("x"=800.0, "y"=-59.0, "w"=319.0, "h"=166.0, "r"=42, "g"=42, "b"=42, "radius"=30.0))
+    box(Elements:get("Rectangle306"), table("x"=803.0, "y"=-59.0, "w"=313.0, "h"=163.0, "r"=255, "g"=255, "b"=255, "radius"=30.0))
+    box(Elements:get("Rectangle305"), table("x"=803.0, "y"=-115.0, "w"=313.0, "h"=163.0, "r"=80, "g"=80, "b"=80, "radius"=0.0))
+    text(Elements:get("COLLECTIONTIME"), table("text"="COLLECTION TIME:", "x"=803.0, "y"=-10.0, "w"= 313.0, "h"=76.0, "r"=255, "g"=255, "b"=255, "size"=35, "halign"=1, "valign"=1))
+    text(Elements:get("/Min/Sec"), table("text"="UNKNOWN", "x"=803.0, "y"=36.0, "w"= 313.0, "h"=63.0, "r"=0, "g"=0, "b"=0, "size"=35, "halign"=1, "valign"=1))
+    
+    HUD:egpAlpha(Elements:get("Rectangle307"),150)
+    HUD:egpAlpha(Elements:get("Rectangle306"),150)
+    HUD:egpAlpha(Elements:get("Rectangle305"),150)
+}    
+
+function void sendReq() {
+    broadcastRemoteEvent(table())
+} 
+
+function void displayAdminHelp() {
+    # Send header
+    owner():msg("{#FFBF00 === ADMIN COMMANDS (BANKER MAIN) ===}")
+    
+    # Admin commands
+    owner():msg("{#FFBF00 *help} - Shows this admin help message")
+    owner():msg("{#FFBF00 *close 'minutes' 'notifs'} - Sends closing notifications")
+    owner():msg("{#FFBF00 *customers} - Shows list of all customers with tiers")
+    owner():msg("{#FFBF00 *profit} - Shows total profit summary from all racks")
+    owner():msg("{#FFBF00 *wire 'player' 'amount'} - Sends money to player")
+    owner():msg("{#FFBF00 *owner 'player'} - Sets player as owner of last aimed rack")
+    owner():msg("{#FFBF00 *raided} - Notifies all customers that bank was raided")
+    owner():msg("{#FFBF00 *insurance} - Pays insurance to ALL customers")
+    owner():msg("{#FFBF00 *checkinsurance 'player'} - Shows player's insurance info")
+    owner():msg("{#FFBF00 *setprinter 'player' 'type' 'count'} - Manually set printer count")
+    owner():msg("{#FFBF00 Types: Basic, Advanced, Tier 5, VIP, VIP+, Epic, Legendary, Halloween, BitMiner Rack}")
+    
+    # Send footer
+    owner():msg("{#FFBF00 ==================================}")
+}
+
+function void cmdAdmin(Command:string, Args:array) {
+    switch(Command) {
+        case "HELP",
+            displayAdminHelp()
+        break
+        case "WIRE",
+            if(Args:count() >= 2) {
+                let PlayerName = Args[1, string]
+                let Player = PlayerName:findPlayer()
+                let Amount = Args[2, string]:toNumber()
+                if(Player:isValid() && Amount > 1000) {
+                    moneyGive(Player,Amount)
+                    owner():msg("{yellow [" + BankName + " E2] } YOU HAVE SENT {green " + formatNumber(Amount) + "} TO {*" + Player:name():upper() + "}")
+                    Player:msg("{yellow [" + BankName + " E2] } {*" + limitNameLength(BankName,10) + "} HAS SENT YOU {green " + formatNumber(Amount) + "}")
+                }
+                else { print("{! Player or Amount INVALID}") }      
+            }
+            else { print("{! usage} - {yellow *wire 'player' 'amount'} amount must be bigger than 100") }
+        break
+        case "OWNER",
+            if(Args:count() >= 1) {
+                let PlayerName = Args[1, string]
+                let Player = PlayerName:findPlayer()
+                if(Player:isValid()) {
+                    setRackOwner(Player)
+                } else {
+                    owner():msg("{!yellow [" + BankName + "]} {red Player not found.}")
+                }
+            } else {
+                owner():msg("{!yellow [" + BankName + "]} {red Usage: *owner 'player'}")
+            }
+        break
+        case "PROFIT",
+            displayTotalProfit()
+        break
+        case "CLOSE",
+            if(Args:count() >= 1) {
+                let Minutes = Args[1, string]:toNumber()
+                let NotifNum = Args[2, string]:toNumber()
+                close(Minutes, NotifNum)
+            }
+        break
+        case "CUSTOMERS",
+            displayAllCustomers()
+        break
+        case "RAIDED",
+            sendRaidedNotification()
+        break
+        case "INSURANCE",
+            payInsurance()
+        break
+        case "CHECKINSURANCE",
+            if(Args:count() >= 1) {
+                let PlayerName = Args[1, string]
+                let Player = PlayerName:findPlayer()
+                if(Player:isValid()) {
+                    displayPlayerInsurance(Player)
+                } else {
+                    owner():msg("{!yellow [" + BankName + "]} {red Player not found.}")
+                }
+            } else {
+                owner():msg("{!yellow [" + BankName + "]} {red Usage: *checkinsurance 'player'}")
+            }
+        break
+        case "SETPRINTER",
+            if(Args:count() >= 3) {
+                let PlayerName = Args[1, string]
+                let Player = PlayerName:findPlayer()
+                let PrinterType = Args[2, string]
+                let Count = Args[3, string]:toNumber()
+                
+                if(Player:isValid()) {
+                    # Validate printer type
+                    let ValidTypes = array("Basic", "Advanced", "Tier 5", "VIP", "VIP+", "Epic", "Legendary", "Halloween")
+                    let IsValid = 0
+                    
+                    for(I = 1, ValidTypes:count()) {
+                        if(ValidTypes[I, string]:upper() == PrinterType:upper()) {
+                            PrinterType = ValidTypes[I, string]
+                            IsValid = 1
+                            break
+                        }
+                    }
+                    
+                    if(IsValid) {
+                        setPlayerPrinters(Player, PrinterType, Count)
+                    } else {
+                        owner():msg("{!yellow [" + BankName + "]} {red Invalid printer type. Valid types: Basic, Advanced, Tier 5, VIP, VIP+, Epic, Legendary, Halloween}")
+                    }
+                } else {
+                    owner():msg("{!yellow [" + BankName + "]} {red Player not found.}")
+                }
+            } else {
+                owner():msg("{!yellow [" + BankName + "]} {red Usage: *setprinter 'player' 'type' 'count'}")
+            }
+        break
+        case "COPS",
+            let Amount = 50000
+            if(Amount) {
+                let Count = 0
+                findIncludeClass("player")
+                findInSphere(entity():pos(),1000)
+                let Players = findToTable()
+                foreach(_:number, Player:entity = Players) {
+                    let Job = Player:team():teamName()
+                    let IsLawEnforcement = 0
+                    for(I = 1, JOB:count()) {
+                        if(JOB[I, string] == Job) {
+                            IsLawEnforcement = 1
+                            break
+                        }
+                    }
+                    if(IsLawEnforcement) {
+                        moneyGive(Player,Amount)
+                        Player:msg("{!yellow [" + BankName + "]} You received ${green " + Amount + "} for {blue defending} {yellow " + BankName:lower() + "}.")
+                        Count++
+                    }
+                }
+                print("{!yellow [" + BankName + "]} You paid $" + Amount + " to " + Count + " law enforcement players")
+            }
+            else{ print("{! INVALID INPUT}") }
+        break
+    }
+}
+
+if(first() || dupefinished()) {
+    HUD:egpClear()
+    HUD:egpDrawTopLeft(1)
+    
+    sendReq()
+    timer(60,0,function() {
+        sendReq()
+    })
+    timer(0.1, 0, function() {
+        checkCollection()
+    })
+    timer("Timer",600,0,function() {
+        print("{! [" + BankName + "] } {!green time to collect from printer}")
+        owner():soundPlay(0,1,"zmlab2/cash.wav")
+    })
+    
+    timer("TimeLeft",1,0,function() {
+        TimeLeft = timerTimeLeft("Timer")
+        
+        if(!HUD:egpHasObject(Elements:get("Rectangle307"))) {
+            timerdraw()
+        }
+        else {
+            HUD:egpSetText(Elements:get("/Min/Sec"), formatTimeInSeconds(TimeLeft))
+        }
+    })
+    
+    loadOverallTotals()
+}
+
+event remote(Sender:entity, Player:entity, Payload:table) {    
+    if (Player == owner()) {
+        if(Sender == findE2ByName("Cozzah's bank security v1.2",200)) {
+            Guards = Payload
+            #print("{blue " + Sender:getName() + "} table has been loaded with {yellow " + Payload:count() + "} entries.")
+        }
+        elseif(Sender == findE2ByName("Cozzah's Banker E2 Membership",200)) {
+            MemberData = Payload
+            #print("{green " + Sender:getName() + "} table has been loaded with {yellow " + Payload:count() + "} entries.")
+        }
+        elseif(Sender == findE2ByName("Cozzah's Banker E2 Depo",200)) {
+            # Received rack assignments and printer data from depo E2
+            let RacksData = Payload["racks", table]
+            let PrintersData = Payload["printers", table]
+            
+            let NewRackCount = 0
+            let SkippedRackCount = 0
+            foreach(RackID:number, RackData:table = RacksData) {
+                # Only add racks that don't already exist (preserves ownership set by *owner command)
+                if(!Racks:exists(RackID)) {
+                    Racks[RackID, table] = RackData
+                    NewRackCount++
+                } else {
+                    SkippedRackCount++
+                }
+            }
+            
+            if(NewRackCount > 0) {
+                print("{cyan [Depo]} Added " + NewRackCount + " NEW rack assignments")
+            }
+            if(SkippedRackCount > 0) {
+                print("{yellow [Depo]} Skipped " + SkippedRackCount + " racks (already owned)")
+            }
+            
+            # Store printer data by entity ID (prevents duplicates)
+            foreach(SteamID:string, PrinterList:table = PrintersData) {
+                if(!Racks:exists("player_printers")) {
+                    Racks["player_printers", table] = table()
+                }
+                
+                # Initialize this player's printer data if it doesn't exist
+                if(!Racks["player_printers", table]:exists(SteamID)) {
+                    Racks["player_printers", table][SteamID, table] = table()
+                }
+                
+                # Add only NEW printer entities (by ID)
+                let ExistingPrinters = Racks["player_printers", table][SteamID, table]
+                foreach(PrinterID:number, PrinterInfo:table = PrinterList) {
+                    if(!ExistingPrinters:exists(PrinterID)) {
+                        ExistingPrinters[PrinterID, table] = PrinterInfo
+                    }
+                }
+}
+            
+            if(NewRackCount > 0) {
+                print("{cyan [Depo]} Received " + NewRackCount + " rack assignments and printer data from Depo E2")
+            }
+        }
+    }
+}
+
+event chat(Player:entity, Message:string, _:number) {
+    if(Player == owner() && Message:sub(1, 1) == "*") {
+        let Args = Message:explode(" ")
+        let Command = Args[1, string]:upper()
+        Args:remove(1)
+        cmdAdmin(Command:sub(2), Args)
+        hideChat(1)
+    }
+}
+
+event fileLoaded(File:string, Data:string) {
+    if(File == "banker_overall_totals.txt") {
+        if(Data != "") {
+            let LoadedData = jsonDecode(Data)
+            
+            if(LoadedData:count() > 0) {
+                OverallTotalTax = LoadedData["overall_tax", number]
+                OverallTotalProfit = LoadedData["overall_profit", number]
+                owner():msg("{!yellow [" + BankName + "]} {green Loaded overall totals: Tax $" + formatNumber(OverallTotalTax) + ", Profit $" + formatNumber(OverallTotalProfit) + "}")
+            }
+        } else {
+            print("No overall totals file found, starting fresh")
+            OverallTotalTax = 0
+            OverallTotalProfit = 0
+        }
+    }
+}

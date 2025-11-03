@@ -1,0 +1,831 @@
+@name Cozzah's Banker E2 Depo
+
+@inputs [Door DoorSecurity]:wirelink
+@inputs [Button]:number
+@inputs [DepoMin DepoMax BaseMin BaseMax]:entity
+@outputs [TextScreen]:string
+
+@persist [CurrentPlayer]:entity [Active]:number [MemberData DepoRacks PlayerPrinters]:table
+@persist [BasePrinterCount]:table
+@persist [ScanEntities]:array [ScanIndex ScanInProgress]:number
+@persist [TempBasePrinterCount]:table [TempTotalPrinters TempTotalRacks]:number
+@persist [ScanStartTime]:number
+
+#include "CozzahsBankBundle/includes/animations"
+#include "CozzahsBankBundle/includes/ui"
+#include "CozzahsBankBundle/includes/functions"
+#include "CozzahsBankBundle/includes/membership_configuration"
+
+if(first() || dupefinished()) {
+    DepoRacks = table()
+    PlayerPrinters = table()
+    BasePrinterCount = table()
+    TextScreen = ""
+    Button = 0
+    
+    # FORCE RESET scan state on reload
+    ScanInProgress = 0
+    ScanEntities = array()
+    ScanIndex = 1
+    TempBasePrinterCount = table()
+    TempTotalPrinters = 0
+    TempTotalRacks = 0
+    ScanStartTime = 0
+    CurrentPlayer = _NO_ENTITY 
+}
+
+function void sendReq() {
+    broadcastRemoteEvent(table())
+}
+
+function string getPrinterName(Ent:entity) {
+    if(!Ent:isValid()) { return "Unknown" }
+    
+    let Class = Ent:keyvalues()["classname", string]
+    let Name = "Unknown Printer"
+    
+    # Map printer class names to insurance categories
+    if(Class == "printer_basic") { Name = "Basic" }
+    elseif(Class == "printer_advanced") { Name = "Advanced" }
+    elseif(Class == "printer_t5") { Name = "Tier 5" }
+    elseif(Class == "printer_vip") { Name = "VIP" }
+    elseif(Class == "printer_vipplus" || Class == "printer_vip+") { Name = "VIP+" }
+    elseif(Class == "printer_epic") { Name = "Epic" }
+    elseif(Class == "printer_legendary") { Name = "Legendary" }
+    elseif(Class == "printer_halloween") { Name = "Halloween" }
+    elseif(Class == "bitminer_rack") { Name = "BitMiner Rack" }
+    
+    return Name
+}
+
+function string getRackName(Ent:entity) {
+    if(!Ent:isValid()) { return "Standard Rack" }
+    
+    let Class = Ent:keyvalues()["classname", string]
+    
+    # Check specific classes first
+    if(Class == "bitminer_tower_pro") { return "BitMiner Tower Pro" }
+    elseif(Class == "bitminer_tower") { return "BitMiner Tower" }
+    elseif(Class == "printer_rack_pro") { return "Pro Rack" }
+    elseif(Class:lower():find("pro")) { return "Pro Rack" }
+    
+    # Default to Standard Rack
+    return "Standard Rack"
+}
+
+function void sendRacksToMain() {
+    if(DepoRacks:count() == 0 && PlayerPrinters:count() == 0) { return }
+    
+    # Find the main banker E2
+    let MainE2 = findE2ByName("Cozzah's Banker E2 Main", 200)
+    
+    if(MainE2:isValid()) {
+        # Send printer data with entity IDs (not just counts)
+        # This allows main E2 to track individual printers and avoid duplicates
+        let DataToSend = table(
+            "racks" = DepoRacks,
+            "printers" = PlayerPrinters
+        )
+        
+        # Send to main E2
+        MainE2:sendRemoteEvent(DataToSend)
+        print("{green [" + BankName + "]} Sent " + DepoRacks:count() + " rack assignments and " + PlayerPrinters:count() + " player printer data to Main E2")
+    } else {
+        print("{red [" + BankName + "]} Could not find Main E2 to send rack data")
+    }
+    
+    # Clear the local tables after sending
+    DepoRacks = table()
+    PlayerPrinters = table()
+}
+
+function void detectAndSavePlayerPrinters(Player:entity) {
+    if(!DepoMin:isValid() || !DepoMax:isValid() || !Player:isValid()) {
+        return
+    }
+    
+    let SteamID = Player:steamID()
+    
+    # Initialize player's printer table if doesn't exist
+    if(!PlayerPrinters:exists(SteamID)) {
+        PlayerPrinters[SteamID, table] = table()
+    }
+    
+    # Find all entities in the depo box
+    findInBox(DepoMin:pos(), DepoMax:pos())
+    let Entities = findToArray()
+    
+    foreach(_:number, Ent:entity = Entities) {
+        if(Ent:isValid()) {
+            let Class = Ent:keyvalues()["classname", string]
+            
+            # Check if it starts with "printer_" but is NOT a rack
+            if((Class:left(8) == "printer_" && Class != "printer_rack" && Class != "printer_rack_pro") || Class == "bitminer_rack") {
+                # Get printer name and ID
+                let PrinterName = getPrinterName(Ent)
+                let PrinterID = Ent:id()
+                
+                # Store printer by ID so we can track individual printers
+                let PlayerData = PlayerPrinters[SteamID, table]
+                if(!PlayerData:exists(PrinterID)) {
+                    PlayerData[PrinterID, table] = table("type" = PrinterName)
+                }
+            }
+        }
+    }
+}
+
+# Build the text screen output (separated for clarity)
+function void buildTextScreenOutput(TotalPrinters:number, TotalRacks:number) {
+    let Output = ""
+    #Output += "===================\n"
+    Output += BankName + " INVENTORY\n"
+    #Output += "===================\n\n"
+    
+    # Display racks first
+    if(TotalRacks > 0) {
+        Output += "RACKS:\n"
+        if(BasePrinterCount:exists("Standard Rack_rack")) {
+            Output += "  Standard: " + BasePrinterCount["Standard Rack_rack", number] + "\n"
+        }
+        if(BasePrinterCount:exists("Pro Rack_rack")) {
+            Output += "  Pro: " + BasePrinterCount["Pro Rack_rack", number] + "\n"
+        }
+        if(BasePrinterCount:exists("BitMiner Tower_rack")) {
+            Output += "  BitMiner Tower: " + BasePrinterCount["BitMiner Tower_rack", number] + "\n"
+        }
+        if(BasePrinterCount:exists("BitMiner Tower Pro_rack")) {
+            Output += "  BitMiner Tower Pro: " + BasePrinterCount["BitMiner Tower Pro_rack", number] + "\n"
+        }
+        Output += "\n"
+    }
+    
+    # Display printers
+    if(TotalPrinters > 0) {
+        Output += "PRINTERS:\n"
+        
+        # Define printer order for consistent display
+        let PrinterOrder = array("Basic", "Advanced", "Tier 5", "VIP", "VIP+", "Epic", "Legendary", "Halloween")
+        
+        foreach(_:number, PrinterName:string = PrinterOrder) {
+            if(BasePrinterCount:exists(PrinterName)) {
+                Output += "  " + PrinterName + ": " + BasePrinterCount[PrinterName, number] + "\n"
+            }
+        }
+        
+        Output += "\n"
+    }
+    
+    #Output += "===================\n"
+    Output += "Total Racks: " + TotalRacks + "\n"
+    Output += "Total Printers: " + TotalPrinters
+    
+    TextScreen = Output
+}
+
+# Process a batch of entities
+function void processBatch() {
+    if(!ScanInProgress) { return }  # Safety check
+    
+    let BatchSize = 40  # Process 40 entities per tick (adjust based on testing)
+    let EndIndex = min(ScanIndex + BatchSize - 1, ScanEntities:count())
+    
+    # Process this batch
+    for(I = ScanIndex, EndIndex) {
+        let Ent = ScanEntities[I, entity]
+        
+        if(Ent:isValid()) {
+            let Class = Ent:keyvalues()["classname", string]
+            
+            # Check if it's a printer (not a rack)
+            if((Class:left(8) == "printer_" && Class != "printer_rack" && Class != "printer_rack_pro") || Class == "bitminer_rack") {
+                let PrinterName = getPrinterName(Ent)
+                
+                # Count this printer type
+                if(TempBasePrinterCount:exists(PrinterName)) {
+                    TempBasePrinterCount[PrinterName, number] = TempBasePrinterCount[PrinterName, number] + 1
+                } else {
+                    TempBasePrinterCount[PrinterName, number] = 1
+                }
+                TempTotalPrinters++
+            }
+            # Check if it's a rack
+            elseif(Class == "printer_rack" || Class == "printer_rack_pro" || Class == "bitminer_tower" || Class == "bitminer_tower_pro") {  # MODIFY THIS LINE
+                let RackType = getRackName(Ent)
+                let RackKey = RackType + "_rack"
+                
+                if(TempBasePrinterCount:exists(RackKey)) {
+                    TempBasePrinterCount[RackKey, number] = TempBasePrinterCount[RackKey, number] + 1
+                } else {
+                    TempBasePrinterCount[RackKey, number] = 1
+                }
+                TempTotalRacks++
+            }
+        }
+    }
+    
+    # Update index
+    ScanIndex = EndIndex + 1
+    
+    # Check if we're done
+    if(ScanIndex > ScanEntities:count()) {
+        # Scan complete! Update the real values
+        BasePrinterCount = TempBasePrinterCount
+        ScanInProgress = 0
+        ScanEntities = array() # Clear to save memory
+        
+        # Stop the batch timer
+        if(timerExists("batchScanContinue")) {
+            stoptimer("batchScanContinue")
+        }
+        
+        # Build and update the text screen
+        buildTextScreenOutput(TempTotalPrinters, TempTotalRacks)
+    }
+}
+
+# Start the scan
+function void startBasePrinterScan() {
+    if(TextScreen == "") {
+        TextScreen = "PLEASE WAIT WHILE WE FIND YOUR PRINTERS"
+    }
+    
+    # Check if scan has been stuck for more than 30 seconds
+    if(ScanInProgress && (curtime() - ScanStartTime) > 60) {
+        ScanInProgress = 0
+        if(timerExists("batchScanContinue")) {
+            stoptimer("batchScanContinue")
+        }
+    }
+    
+    if(ScanInProgress) { 
+        return 
+    }
+    
+    if(!BaseMin:isValid() || !BaseMax:isValid()) {
+        TextScreen = "ERROR: BaseMin or BaseMax not configured"
+        return
+    }
+    
+    # Find all entities (just once)
+    findInBox(BaseMin:pos(), BaseMax:pos())
+    ScanEntities = findToArray()
+    ScanIndex = 1
+    ScanInProgress = 1
+    ScanStartTime = curtime()
+    
+    # Reset temporary counters
+    TempBasePrinterCount = table()
+    TempTotalPrinters = 0
+    TempTotalRacks = 0
+    
+    # Start a repeating timer that calls processBatch
+    if(timerExists("batchScanContinue")) {
+        stoptimer("batchScanContinue")
+    }
+    timer("batchScanContinue", 2.5, 0, function() { processBatch() })
+}
+
+function void detectRacksInDepo(Player:entity) {
+    if(!DepoMin:isValid() || !DepoMax:isValid()) {
+        owner():msg("{!yellow [" + BankName + "]} {red Depo area not configured properly}")
+        return
+    }
+    
+    # Find all entities in the depo box
+    findInBox(DepoMin:pos(), DepoMax:pos())
+    let Entities = findToArray()
+    let RackCount = 0
+    let PrinterCount = 0
+    
+    # Process all entities first
+    foreach(_:number, Ent:entity = Entities) {
+        if(Ent:isValid()) {
+            let Class = Ent:keyvalues()["classname", string]
+            
+            # Check if it's a printer rack
+            if(Class == "printer_rack" || Class == "printer_rack_pro" || Class == "bitminer_tower" || Class == "bitminer_tower_pro") {
+                let RackID = Ent:id()
+                let RackType = getRackName(Ent)
+                
+                # Only add if rack doesn't already exist (preserves ownership)
+                if(!DepoRacks:exists(RackID)) {
+                    DepoRacks[RackID, table] = table(
+                        "owner" = Player:steamID(),
+                        "tax_total" = 0,
+                        "profit_total" = 0,
+                        "rack_type" = RackType
+                    )
+                }
+                
+                RackCount++
+            }
+            # Check if it's a printer (starts with printer_ but NOT a rack)
+            elseif((Class:left(8) == "printer_" && Class != "printer_rack" && Class != "printer_rack_pro") || Class == "bitminer_rack") {
+                PrinterCount++
+            }
+        }
+    }
+    
+    # Detect and save printers
+    detectAndSavePlayerPrinters(Player)
+    
+    # Send messages on a timer to avoid interrupting detection
+    timer("msg_detection_complete", 1, function() {
+        if(!CurrentPlayer:isValid()) {
+            if(RackCount > 0 || PrinterCount > 0) {
+                Player:msg("{!yellow [" + BankName + "]} {green Detected " + RackCount + " racks and " + PrinterCount + " printers in your deposit area}")
+            } else {
+                Player:msg("{!yellow [" + BankName + "]} {yellow No racks or printers detected. Make sure they are inside the depo area}")
+            }
+        }
+    })
+}
+
+function void updatePrinterDisplay() {
+    if(!CurrentPlayer:isValid()) { return }
+    
+    let SteamID = CurrentPlayer:steamID()
+    
+    # Clear old printer and rack text elements
+    for(I = 1, 20) {
+        EGP:egpRemove(Elements:get("Printer" + I))
+    }
+    for(I = 1, 3) {
+        EGP:egpRemove(Elements:get("Rack" + I))
+    }
+    EGP:egpRemove(Elements:get("NoPrinters"))
+    EGP:egpRemove(Elements:get("RackHeader"))
+    
+    let YPosition = 66
+    let Index = 1
+    let HasContent = 0
+    
+    # Display racks first - count them by type
+    let RackCounts = table()
+    foreach(_:number, RackData:table = DepoRacks) {
+        if(RackData["owner", string] == SteamID) {
+            let RackType = RackData["rack_type", string]
+            if(RackCounts:exists(RackType)) {
+                RackCounts[RackType, number] = RackCounts[RackType, number] + 1
+            } else {
+                RackCounts[RackType, number] = 1
+            }
+        }
+    }
+    
+    if(RackCounts:count() > 0) {
+        # Add header
+        text(Elements:get("RackHeader"), table("text" = "--- RACKS ---","x" = 9.0,"y" = YPosition,"w" = 106.0,"h" = 14.0,"r" = 255,"g" = 215,"b" = 0,"size" = 11,"halign" = 1,"valign" = 1))
+        YPosition += 13
+        
+        let RackIndex = 1
+        foreach(RackType:string, Count:number = RackCounts) {
+            if(RackIndex <= 2) {  # Limit to 5 rack types
+                text(Elements:get("Rack" + RackIndex), table("text" = RackType + " x " + Count,"x" = 9.0,"y" = YPosition,"w" = 106.0,"h" = 14.0,"r" = 192,"g" = 192,"b" = 192,"size" = 11,"halign" = 1,"valign" = 1))
+                YPosition += 13
+                HasContent = 1
+                RackIndex++
+            }
+        }
+        
+        # Add spacing after racks
+        YPosition += 8
+    }
+    
+    # Get player's printer data
+    if(!PlayerPrinters:exists(SteamID)) {
+        if(!HasContent) {
+            text(Elements:get("NoPrinters"), table("text" = "No printers or racks detected","x" = 9.0,"y" = YPosition,"w" = 106.0,"h" = 14.0,"r" = 255,"g" = 128,"b" = 128,"size" = 11,"halign" = 1,"valign" = 1))
+        }
+        return
+    }
+    
+    let PlayerData = PlayerPrinters[SteamID, table]
+
+    # Count printers by type
+    let PrinterCounts = table()
+    foreach(_:number, PrinterInfo:table = PlayerData) {
+        let PrinterType = PrinterInfo["type", string]
+        if(PrinterCounts:exists(PrinterType)) {
+            PrinterCounts[PrinterType, number] = PrinterCounts[PrinterType, number] + 1
+        } else {
+            PrinterCounts[PrinterType, number] = 1
+        }
+    }
+    
+    # Add printer header if we have printers
+    if(PrinterCounts:count() > 0) {
+        text(Elements:get("Printer" + Index), table("text" = "--- PRINTERS ---","x" = 9.0,"y" = YPosition,"w" = 106.0,"h" = 14.0,"r" = 255,"g" = 215,"b" = 0,"size" = 11,"halign" = 1,"valign" = 1))
+        YPosition += 13
+        Index++
+    }
+    
+    foreach(PrinterName:string, Count:number = PrinterCounts) {
+        if(Index <= 15) {  # Limit to 15 types
+            # Set color based on printer type
+            let R = 255
+            let G = 255
+            let B = 255
+            
+            if(PrinterName == "Epic") { R = 87, G = 31, B = 130 }
+            elseif(PrinterName == "Basic") { R = 32, G = 188, B = 146 }
+            elseif(PrinterName == "Tier 5") { R = 255, G = 29, B = 27 }
+            elseif(PrinterName == "Legendary") { R = 224, G = 180, B = 51 }
+            elseif(PrinterName == "Advanced") { R = 34, G = 171, B = 226 }
+            elseif(PrinterName == "VIP+") { R = 127, G = 29, B = 110 }
+            elseif(PrinterName == "VIP") { R = 159, G = 29, B = 29 }
+            elseif(PrinterName == "Halloween") { R = 235, G = 97, B = 35 }
+            elseif(PrinterName == "BitMiner Rack") { R = 200, G = 200, B = 200 }
+            
+            text(Elements:get("Printer" + Index), table("text" = PrinterName + " x " + Count,"x" = 9.0,"y" = YPosition,"w" = 106.0,"h" = 14.0,"r" = R,"g" = G,"b" = B,"size" = 11,"halign" = 1,"valign" = 1))
+            YPosition += 13
+            Index++
+            HasContent = 1
+        }
+    }
+}
+
+function void continuousDetectRacksInDepo() {
+    if(!CurrentPlayer:isValid() || !DepoMin:isValid() || !DepoMax:isValid()) {
+        return
+    }
+    
+    let Player = CurrentPlayer
+    let SteamID = Player:steamID()
+    
+    # Find all entities in the depo box
+    findInBox(DepoMin:pos(), DepoMax:pos())
+    let Entities = findToArray()
+    
+    # Process all entities
+    foreach(_:number, Ent:entity = Entities) {
+        if(Ent:isValid()) {
+            let Class = Ent:keyvalues()["classname", string]
+            
+            # Check if it's a printer rack
+            if(Class == "printer_rack" || Class == "printer_rack_pro" || Class == "bitminer_tower" || Class == "bitminer_tower_pro") {
+                let RackID = Ent:id()
+                let RackType = getRackName(Ent)
+                
+                # Only add if rack doesn't already exist (preserves ownership)
+                if(!DepoRacks:exists(RackID)) {
+                    DepoRacks[RackID, table] = table(
+                        "owner" = SteamID,
+                        "tax_total" = 0,
+                        "profit_total" = 0,
+                        "rack_type" = RackType
+                    )
+                }
+            }
+        }
+    }
+    
+    # Initialize player's printer table if doesn't exist
+    if(!PlayerPrinters:exists(SteamID)) {
+        PlayerPrinters[SteamID, table] = table()
+    }
+    
+    # Track which printers we've seen (by entity ID)
+    foreach(_:number, Ent:entity = Entities) {
+        if(Ent:isValid()) {
+            let Class = Ent:keyvalues()["classname", string]
+            
+            if((Class:left(8) == "printer_" && Class != "printer_rack" && Class != "printer_rack_pro") || Class == "bitminer_rack") {
+                let PrinterName = getPrinterName(Ent)
+                let PrinterID = Ent:id()
+                
+                # Store printer by ID so we can track individual printers
+                let PlayerData = PlayerPrinters[SteamID, table]
+                if(!PlayerData:exists(PrinterID)) {
+                    PlayerData[PrinterID, table] = table("type" = PrinterName)
+                }
+            }
+        }
+    }
+    
+    # Update display
+    updatePrinterDisplay()
+}
+
+function void screenReset() {
+    stopAllTimers()
+    if(!timerExists("getTable")) { timer("getTable",60,0,function() { sendReq() }) }
+    if(!timerExists("updateBaseCount")) { timer("updateBaseCount", 300, 0, function() { startBasePrinterScan() }) }
+    CurrentPlayer = _NO_ENTITY 
+    Door["Fade", number] = 0
+    DoorSecurity["Fade", number] = 1
+    Door:entity():soundPlay(0,2,"czero/doorstop6.wav")
+    
+    # Do one final detection before closing to catch any entities outside the area
+    if(CurrentPlayer:isValid()) {
+        if(CurrentPlayer:isValid()) {
+            detectRacksInDepo(CurrentPlayer)
+        }
+    }
+    
+    # Send racks to main E2 when door closes (player exiting)
+    timer("sendRacks", 0.5, function() {
+        sendRacksToMain()
+    })
+    bankHomeScreen(Elements, EGP,"default",function() {
+        depoMain(Elements, EGP)
+    })
+} 
+
+if(first() || dupefinished() || ~EGP) {
+    CurrentPlayer = _NO_ENTITY
+    
+    MemberData = table()
+    DepoRacks = table()
+    PlayerPrinters = table()
+    BasePrinterCount = table()
+    TextScreen = ""
+    
+    Door["Fade", number] = 0
+    DoorSecurity["Fade", number] = 1
+    bankHomeScreen(Elements, EGP,"default",function() {
+        depoMain(Elements, EGP)
+    })
+    
+    timer(10,function() { sendReq() })
+    timer("getTable",60,0,function() { sendReq() })
+    
+    # Update base printer count every 2 seconds
+    timer("updateBaseCount", 300, 0, function() { startBasePrinterScan() })
+    
+    # Set visualization for BaseMin and BaseMax
+    if(BaseMin:isValid()) {
+        BaseMin:setColor(vec(0, 255, 255))
+        BaseMin:setMaterial("lights/white")
+    }
+    if(BaseMax:isValid()) {
+        BaseMax:setColor(vec(255, 0, 255))
+        BaseMax:setMaterial("lights/white")
+    }
+}
+
+if(~BaseMin) {
+    BaseMin:setColor(vec(0, 255, 255))
+    BaseMin:setMaterial("lights/white")
+}
+
+if(~BaseMax) {
+    BaseMax:setColor(vec(255, 0, 255))
+    BaseMax:setMaterial("lights/white")
+}
+
+if(userInput(User) && (User == CurrentPlayer || CurrentPlayer == _NO_ENTITY)) {
+    CurrentPlayer = User
+    distanceFromEntity(CurrentPlayer, EGP:entity(), 250, function() {
+        screenReset()
+        Active = 0
+    })
+    
+    let Cursor = cursorObj(array("Ellipse22", "ButtonDepo", "ExitButton", "InstructionsExitButton"))
+    switch (Cursor) {
+        case "Ellipse22",       
+            if(!Active) {
+                Active = 1
+                EGP:entity():soundPlay(0,2,"buttons/lever3.wav")
+                timer(10,function() { removeOffscreenObjects(Elements, EGP) })
+                rotateTo("Ellipse22",2,180)
+                timer(3.3,function() { moveTo(Elements,"MADEWITHODIN",1,vec2(64,462)) })
+                timer(3.5,function() {
+                    EGP:entity():soundPlay(0,2,"doors/doormove1.wav",1)
+                    moveTo(Elements,"Rectangle44",3,vec2(0,-1000))
+                    moveTo(Elements,"Rectangle45",3.5,vec2(0,1000))
+                    moveTo(Elements,"Ellipse22",2.5,vec2(256,-1000))
+                    moveTo(Elements,"START",2.4,vec2(216,-1000))
+                })
+                # Get player's membership tier
+                let PlayerTier = TIER_COPPER
+                if(CurrentPlayer:isValid()) {
+                    PlayerTier = getEffectiveTier(CurrentPlayer, MemberData)
+                }
+                
+                # Get tier configuration
+                let TierR = getTierColorR(PlayerTier)
+                let TierG = getTierColorG(PlayerTier)
+                let TierB = getTierColorB(PlayerTier)
+                let TierTax = getTierTax(PlayerTier) * 100
+                let TierInsurance = getTierInsurance(PlayerTier) * 100
+                let TierName = getTierName(PlayerTier)
+            
+                # Membership tier Section
+                circle(Elements:get("Ellipse16"), table("x"=152.375, "y"=266.38, "w"=14.375, "h"=9.38, "r"=TierR, "g"=TierG, "b"=TierB))
+                circle(Elements:get("Ellipse17"), table("x"=152.375, "y"=444.62, "w"=14.375, "h"=9.38, "r"=TierR, "g"=TierG, "b"=TierB))
+                circle(Elements:get("Ellipse18"), table("x"=37.375, "y"=266.38, "w"=14.375, "h"=9.38, "r"=TierR, "g"=TierG, "b"=TierB))
+                circle(Elements:get("Ellipse19"), table("x"=37.375, "y"=444.62, "w"=14.375, "h"=9.38, "r"=TierR, "g"=TierG, "b"=TierB))
+                box(Elements:get("Rectangle51"), table("x"=-130.0, "y"=257.0, "w"=115.0, "h"=197.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+                box(Elements:get("Rectangle53"), table("x"=23.0, "y"=266.3, "w"=144.0, "h"=178.4, "r"=42, "g"=42, "b"=42, "radius"=0))
+                
+                # Add tier icon
+                if(PlayerTier == TIER_DIAMOND || PlayerTier == TIER_RUBY) {
+                    # Diamond icon elements
+                    box(Elements:get("Rectangle67"), table("x"=38.69, "y"=291.46, "w"=36.97, "h"=29.48, "r"=TierR, "g"=TierG, "b"=TierB, "radius"=0))
+                    box(Elements:get("Rectangle68"), table("x"=38.22, "y"=299.24, "w"=37.92, "h"=1.23, "r"=42, "g"=42, "b"=42, "radius"=0))
+                    box(Elements:get("Rectangle69"), table("x"=74.18, "y"=289.02, "w"=9.6, "h"=4.31, "r"=42, "g"=42, "b"=42, "radius"=0))
+                    EGP:egpAngle(Elements:get("Rectangle69"), vec2(74.18, 289.02), vec2(0, 0), -57.0)
+                    box(Elements:get("Rectangle70"), table("x"=35.01, "y"=297.16, "w"=9.73, "h"=4.31, "r"=42, "g"=42, "b"=42, "radius"=0))
+                    EGP:egpAngle(Elements:get("Rectangle70"), vec2(35.01, 297.16), vec2(0, 0), 57.0)
+                    box(Elements:get("Rectangle71"), table("x"=43.54, "y"=291.6, "w"=1.23, "h"=10.56, "r"=42, "g"=42, "b"=42, "radius"=0))
+                    EGP:egpAngle(Elements:get("Rectangle71"), vec2(43.54, 291.6), vec2(0, 0), 37.0)
+                    box(Elements:get("Rectangle72"), table("x"=69.97, "y"=290.9, "w"=1.23, "h"=10.56, "r"=42, "g"=42, "b"=42, "radius"=0))
+                    EGP:egpAngle(Elements:get("Rectangle72"), vec2(69.97, 290.9), vec2(0, 0), -37.0)
+                    box(Elements:get("Rectangle74"), table("x"=56.42, "y"=290.71, "w"=1.23, "h"=10.56, "r"=42, "g"=42, "b"=42, "radius"=0))
+                    EGP:egpAngle(Elements:get("Rectangle74"), vec2(56.42, 290.71), vec2(0, 0), -37.0)
+                    box(Elements:get("Rectangle75"), table("x"=63.16, "y"=299.9, "w"=1.23, "h"=22.39, "r"=42, "g"=42, "b"=42, "radius"=0))
+                    EGP:egpAngle(Elements:get("Rectangle75"), vec2(63.16, 299.9), vec2(0, 0), -16.0)
+                    box(Elements:get("Rectangle77"), table("x"=76.71, "y"=298.97, "w"=13.41, "h"=29.52, "r"=42, "g"=42, "b"=42, "radius"=0))
+                    EGP:egpAngle(Elements:get("Rectangle77"), vec2(76.71, 298.97), vec2(0, 0), -40.0)
+                    box(Elements:get("Rectangle78"), table("x"=28.0, "y"=308.63, "w"=13.58, "h"=29.52, "r"=42, "g"=42, "b"=42, "radius"=0))
+                    EGP:egpAngle(Elements:get("Rectangle78"), vec2(28.0, 308.63), vec2(0, 0), 40.0)
+                    box(Elements:get("Rectangle76"), table("x"=49.88, "y"=300.34, "w"=1.23, "h"=22.39, "r"=42, "g"=42, "b"=42, "radius"=0))
+                    EGP:egpAngle(Elements:get("Rectangle76"), vec2(49.88, 300.34), vec2(0, 0), 16.0)
+                    box(Elements:get("Rectangle73"), table("x"=56.89, "y"=291.64, "w"=1.23, "h"=10.56, "r"=42, "g"=42, "b"=42, "radius"=0))
+                    EGP:egpAngle(Elements:get("Rectangle73"), vec2(56.89, 291.64), vec2(0, 0), 37.0)
+                } 
+                else {
+                    # Printer/rack icon
+                    box(Elements:get("Rectangle60"), table("x"=70.58, "y"=306.86, "w"=21.74, "h"=6.21, "r"=TierR, "g"=TierG, "b"=TierB, "radius"=0))
+                    EGP:egpAngle(Elements:get("Rectangle60"), vec2(70.58, 306.86), vec2(0, 0), 29.0)
+                    box(Elements:get("Rectangle62"), table("x"=69.82, "y"=307.07, "w"=12.03, "h"=6.75, "r"=TierR, "g"=TierG, "b"=TierB, "radius"=0))
+                    EGP:egpAngle(Elements:get("Rectangle62"), vec2(69.82, 307.07), vec2(0, 0), -29.0)
+                    box(Elements:get("Rectangle64"), table("x"=74.42, "y"=312.72, "w"=21.26, "h"=7.0, "r"=TierR, "g"=TierG, "b"=TierB, "radius"=0))
+                    EGP:egpAngle(Elements:get("Rectangle64"), vec2(74.42, 312.72), vec2(0, 0), 30.0)
+                    box(Elements:get("Rectangle65"), table("x"=70.7, "y"=305.96, "w"=8.67, "h"=1.14, "r"=42, "g"=42, "b"=42, "radius"=0))
+                    EGP:egpAngle(Elements:get("Rectangle65"), vec2(70.7, 305.96), vec2(0, 0), -115.0)
+                    box(Elements:get("Rectangle61"), table("x"=69.8, "y"=306.26, "w"=8.67, "h"=1.14, "r"=42, "g"=42, "b"=42, "radius"=0))
+                    EGP:egpAngle(Elements:get("Rectangle61"), vec2(69.8, 306.26), vec2(0, 0), -27.0)
+                    box(Elements:get("Rectangle63"), table("x"=76.92, "y"=310.41, "w"=1.06, "h"=8.92, "r"=42, "g"=42, "b"=42, "radius"=0))
+                    box(Elements:get("Rectangle66"), table("x"=86.91, "y"=294.0, "w"=8.67, "h"=5.04, "r"=42, "g"=42, "b"=42, "radius"=0))
+                    EGP:egpAngle(Elements:get("Rectangle66"), vec2(86.91, 294.0), vec2(0, 0), -22.0)
+                    box(Elements:get("1" + "Rectangle65"), table("x"=77.14, "y"=310.26, "w"=18.58, "h"=1.14, "r"=42, "g"=42, "b"=42, "radius"=0))
+                    EGP:egpAngle(Elements:get("1" + "Rectangle65"), vec2(77.14, 310.26), vec2(0, 0), 29.0)
+                }
+                
+                text(Elements:get("DEFAULT"), table("text"=TierName, "x"=23.0, "y"=266.0, "w"= 144.0, "h"=27.0, "r"=TierR, "g"=TierG, "b"=TierB, "size"=19, "halign"=1, "valign"=1))
+                text(Elements:get("35%INSURA"), table("text"="TAX: " + TierTax + "% INSURANCE: " + TierInsurance + "%", "x"=37.94, "y"=296.74, "w"= 114.11, "h"=82.01, "r"=255, "g"=255, "b"=255, "size"=14, "halign"=1, "valign"=1))
+                
+                # Update bottom text based on tier
+                let BottomText = "FIND MEMBERSHIP SCREEN TO UPGRADE"
+                if(PlayerTier == TIER_DIAMOND) {
+                    BottomText = "YOU HAVE MAX TIER MEMBERSHIP!"
+                }
+                elseif(PlayerTier != TIER_COPPER) {
+                    BottomText = "YOUR CURRENT MEMBERSHIP TIER"
+                }
+                text(Elements:get("FINDMEMBERSHIP"), table("text"=BottomText, "x"=23.0, "y"=371.0, "w"= 144.0, "h"=67.0, "r"=255, "g"=255, "b"=255, "size"=16, "halign"=1, "valign"=1))
+                
+                # Parent membership card elements
+                EGP:egpParent(Elements:get("Ellipse16"), Elements:get("Rectangle51"))
+                EGP:egpPos(Elements:get("Ellipse16"), vec2(115.005, 9.38))
+                EGP:egpParent(Elements:get("Ellipse17"), Elements:get("Rectangle51"))
+                EGP:egpPos(Elements:get("Ellipse17"), vec2(115.005, 187.62))
+                EGP:egpParent(Elements:get("Ellipse18"), Elements:get("Rectangle51"))
+                EGP:egpPos(Elements:get("Ellipse18"), vec2(0.005, 9.38))
+                EGP:egpParent(Elements:get("Ellipse19"), Elements:get("Rectangle51"))
+                EGP:egpPos(Elements:get("Ellipse19"), vec2(0.005, 187.62))
+                EGP:egpParent(Elements:get("Rectangle53"), Elements:get("Rectangle51"))
+                EGP:egpPos(Elements:get("Rectangle53"), vec2(-14.37, 9.3))
+                
+                # Parent tier icon elements
+                if(PlayerTier == TIER_DIAMOND || PlayerTier == TIER_RUBY) {
+                    EGP:egpParent(Elements:get("Rectangle67"), Elements:get("Rectangle51"))
+                    EGP:egpPos(Elements:get("Rectangle67"), vec2(1.32, 34.46))
+                    EGP:egpParent(Elements:get("Rectangle68"), Elements:get("Rectangle51"))
+                    EGP:egpPos(Elements:get("Rectangle68"), vec2(0.85, 42.24))
+                    EGP:egpParent(Elements:get("Rectangle69"), Elements:get("Rectangle51"))
+                    EGP:egpPos(Elements:get("Rectangle69"), vec2(36.81, 32.02))
+                    EGP:egpParent(Elements:get("Rectangle70"), Elements:get("Rectangle51"))
+                    EGP:egpPos(Elements:get("Rectangle70"), vec2(-2.36, 40.16))
+                    EGP:egpParent(Elements:get("Rectangle71"), Elements:get("Rectangle51"))
+                    EGP:egpPos(Elements:get("Rectangle71"), vec2(6.17, 34.6))
+                    EGP:egpParent(Elements:get("Rectangle72"), Elements:get("Rectangle51"))
+                    EGP:egpPos(Elements:get("Rectangle72"), vec2(32.6, 33.9))
+                    EGP:egpParent(Elements:get("Rectangle74"), Elements:get("Rectangle51"))
+                    EGP:egpPos(Elements:get("Rectangle74"), vec2(19.05, 33.71))
+                    EGP:egpParent(Elements:get("Rectangle75"), Elements:get("Rectangle51"))
+                    EGP:egpPos(Elements:get("Rectangle75"), vec2(25.79, 42.9))
+                    EGP:egpParent(Elements:get("Rectangle77"), Elements:get("Rectangle51"))
+                    EGP:egpPos(Elements:get("Rectangle77"), vec2(39.34, 41.97))
+                    EGP:egpParent(Elements:get("Rectangle78"), Elements:get("Rectangle51"))
+                    EGP:egpPos(Elements:get("Rectangle78"), vec2(-9.37, 51.63))
+                    EGP:egpParent(Elements:get("Rectangle76"), Elements:get("Rectangle51"))
+                    EGP:egpPos(Elements:get("Rectangle76"), vec2(12.51, 43.34))
+                    EGP:egpParent(Elements:get("Rectangle73"), Elements:get("Rectangle51"))
+                    EGP:egpPos(Elements:get("Rectangle73"), vec2(19.52, 34.64))
+                }
+                else {
+                    EGP:egpParent(Elements:get("Rectangle60"), Elements:get("Rectangle51"))
+                    EGP:egpPos(Elements:get("Rectangle60"), vec2(33.21, 49.86))
+                    EGP:egpParent(Elements:get("Rectangle62"), Elements:get("Rectangle51"))
+                    EGP:egpPos(Elements:get("Rectangle62"), vec2(32.45, 50.07))
+                    EGP:egpParent(Elements:get("Rectangle64"), Elements:get("Rectangle51"))
+                    EGP:egpPos(Elements:get("Rectangle64"), vec2(37.05, 55.72))
+                    EGP:egpParent(Elements:get("Rectangle65"), Elements:get("Rectangle51"))
+                    EGP:egpPos(Elements:get("Rectangle65"), vec2(33.33, 48.96))
+                    EGP:egpParent(Elements:get("Rectangle61"), Elements:get("Rectangle51"))
+                    EGP:egpPos(Elements:get("Rectangle61"), vec2(32.43, 49.26))
+                    EGP:egpParent(Elements:get("Rectangle63"), Elements:get("Rectangle51"))
+                    EGP:egpPos(Elements:get("Rectangle63"), vec2(39.55, 53.41))
+                    EGP:egpParent(Elements:get("Rectangle66"), Elements:get("Rectangle51"))
+                    EGP:egpPos(Elements:get("Rectangle66"), vec2(49.54, 37.0))
+                    EGP:egpParent(Elements:get("1" + "Rectangle65"), Elements:get("Rectangle51"))
+                    EGP:egpPos(Elements:get("1" + "Rectangle65"), vec2(39.77, 53.26))
+                }
+                
+                # Parent text elements
+                EGP:egpParent(Elements:get("DEFAULT"), Elements:get("Rectangle51"))
+                EGP:egpPos(Elements:get("DEFAULT"), vec2(-14.37, 9.0))
+                EGP:egpParent(Elements:get("35%INSURA"), Elements:get("Rectangle51"))
+                EGP:egpPos(Elements:get("35%INSURA"), vec2(0.57, 39.74))
+                EGP:egpParent(Elements:get("FINDMEMBERSHIP"), Elements:get("Rectangle51"))
+                EGP:egpPos(Elements:get("FINDMEMBERSHIP"), vec2(-14.37, 114.0))
+                timer(5,function() { moveTo(Elements,"Rectangle51",0.5,vec2(37.37,257)) })
+            }
+        break,
+        case "ButtonDepo",
+            EGP:entity():soundPlay(0,2,"tau/notifications/5.mp3")
+            instructionsScreen(Elements,EGP) 
+        break,
+        case "InstructionsExitButton",
+            #make sure to change in UI include file on line 266 aprox
+            let ArrowRotation = 0  # Change to 0 to point right, 180 to point left
+            let ArrowY = ArrowRotation == 180 ? 277.0 + 60.0 : 277.0  # Offset by height when rotated
+        
+            Door["Fade", number] = 1
+            DoorSecurity["Fade", number] = 0
+            owner():msg("{!yellow [" + BankName + "] } Player is depositing Printers.")
+            Door:entity():soundPlay(0,2,"czero/doorstop1.wav")
+            
+            depoActive(Elements, EGP, "default")
+            
+            let PlayerTier = getEffectiveTier(CurrentPlayer,MemberData)
+            let R = getTierColorR(PlayerTier)
+            let G = getTierColorG(PlayerTier)
+            let B = getTierColorB(PlayerTier)
+            
+            # Printer List Card Section (add this in the depoActive function in depo E2)
+            circle(Elements:get("Ellipse16"), table("x"=104.23, "y"=41.095, "w"=10.58, "h"=11.095, "r"=R, "g"=G, "b"=B))
+            circle(Elements:get("Ellipse17"), table("x"=104.23, "y"=251.905, "w"=10.58, "h"=11.095, "r"=R, "g"=G, "b"=B))
+            circle(Elements:get("Ellipse18"), table("x"=19.58, "y"=41.095, "w"=10.58, "h"=11.095, "r"=R, "g"=G, "b"=B))
+            circle(Elements:get("Ellipse19"), table("x"=19.58, "y"=251.905, "w"=10.58, "h"=11.095, "r"=R, "g"=G, "b"=B))
+            box(Elements:get("Rectangle51"), table("x"=19.58, "y"=30.0, "w"=84.65, "h"=233.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+            box(Elements:get("Rectangle53"), table("x"=9.0, "y"=41.0, "w"=106.0, "h"=211.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+            text(Elements:get("PRINTERSFOUND"), table("text"="PRINTERS FOUND", "x"=9.0, "y"=41.0, "w"=106.0, "h"=16.0, "r"=255, "g"=255, "b"=255, "size"=14, "halign"=1, "valign"=1))
+            line(Elements:get("Line11"), table("x"=15.0, "y"=58.0, "w"=96.0, "h"=1.0, "r"=255, "g"=255, "b"=255))
+            
+            # Detect racks when door opens (player entering)
+            if(CurrentPlayer:isValid()) {
+                timer("detectRacks", 1,0,function() {
+                    detectRacksInDepo(CurrentPlayer)
+                    # Force update display after a short delay
+                    timer("forceDisplayUpdate", 0.5, function() {
+                        updatePrinterDisplay()
+                    })
+                })
+            }
+            
+            if(!timerExists("continuousDepoDetection")) { timer("continuousDepoDetection", 0.5, 0, function() { continuousDetectRacksInDepo() }) }
+            
+            moveTo(Elements, "Rectangle44", 1, vec2(ArrowRotation == 180 ? 206.0 + 277.0 : 106.0, ArrowY))
+            timer(2,0,function() {
+                moveTo(Elements, "Rectangle44", 0.8, vec2(ArrowRotation == 180 ? 156.0 + 277.0 : 56.0, ArrowY))
+                timer(1,function() {
+                    moveTo(Elements, "Rectangle44", 0.8, vec2(ArrowRotation == 180 ? 206.0 + 277.0 : 106.0, ArrowY))
+                })
+            })
+        break,
+        case "ExitButton",
+            screenReset()
+            Active = 0
+        break,
+    }
+}
+
+if(Button) {
+    if(CurrentPlayer == _NO_ENTITY) {
+        if(!timerExists("Lock") && !timerExists("DepoDoor")) {
+            timer("Lock",4,function() {
+                DoorSecurity["Fade", number] = 0
+                timer("DepoDoor",1,0,function() {
+                    if(!Button) {
+                        DoorSecurity["Fade", number] = 1
+                        stoptimer("DepoDoor")
+                    }
+                })
+            })
+        }
+    }
+}
+
+event remote(Sender:entity, Player:entity, Payload:table) {    
+    if (Player == owner()) {
+        if(Sender == findE2ByName("Cozzah's Banker E2 Membership",200)) {
+            MemberData = Payload
+            #print("{orange " + Sender:getName() + "} table has been loaded with {yellow " + Payload:count() + "} entries.")
+        }
+    }
+}

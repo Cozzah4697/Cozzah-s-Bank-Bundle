@@ -1,0 +1,620 @@
+@name Cozzah's Printer_egp_auto FRANKENSTEIN
+@inputs [EGP]:wirelink [User]:entity
+@inputs [Prop01 Prop02 Prop03 Prop04 Prop05 Prop06 Prop07 Prop08 Prop09 Prop10 Prop11 Prop12 Prop13]:entity
+@outputs [Profit]:number
+@persist Elements:table [Loading FPS]:number
+@persist [Time Total Current Wallet Last Temp Active]:number [JOB Messages]:array
+# Automagically Compiled via https://egpcompiler.com (Credits Odin & Bob Tomato)
+
+@inputs [E1 E2 E3 E4 E5 E6 E7 E8]:entity
+@outputs [RGB]:vector
+
+#include "CozzahsBankBundle/includes/functions"
+#include "CozzahsBankBundle/includes/membership_configuration"
+
+if(first() || dupefinished()) {    
+    Elements = table()
+    FPS = 30 # Frames per second
+    Loading = 1
+    Time = 0
+    Total = 0
+    Current = 0
+    Wallet = owner():moneyAmount()
+    Profit = 0
+    Temp = 0
+    Last = 0
+    Active = 0
+    JOB = array("Mayor", "Police Officer", "Police Chief", "SWAT", "SWAT Medic", "SWAT Sniper", "Secret Service", "CUSTOM_POLICE")
+    
+    timer(0.1,0,function() {
+        # Base hue that shifts over time
+        BaseH = 260 + sin(curtime() * 5) * 180  # Smooth hue transition (0-360)
+        
+        # Convert HSV to RGB once for all props
+        RGB = hsv2rgb(BaseH, 1, 1)
+        
+        # Apply the same color to each valid entity
+        foreach (_:number, Ent:entity = array(E1, E2, E3, E4, E5, E6, E7, E8)) {
+            if (Ent) { 
+                # Apply the same color to all props
+                Ent:setColor(RGB)
+            }
+        }
+    })
+    
+    let MinAdvert = 5 
+    let TimeAdvert = 60*MinAdvert
+    let Name = "}{!yellow " + capitalizeFirst(BankName:lower()) + "}{* "
+    Messages = array(
+        Name + ": Secure your cash with us, or someone else will!-GPT",
+        "Don't wait until you're raided. Deposit now at " + Name + "!-GPT",
+        "Trust issues? Perfect. That's why " + Name + " was built like a bunker!-GPT",
+        Name + ": Because every dollar deserves a panic room!-GPT",
+        "From pennies to millions, " + Name + " treats every deposit like royalty!-GPT",
+        "Protect your money! " + Name + " keeps your money out of other peoples pockets!-GPT",
+        "Built for safety. Made for ballers. " + Name + " is open!-GPT",
+        Name + ": Thieves hate us, investors love us!-GPT",
+        "Carry less, stress less. Use " + Name + " Bank today!-GPT",
+        "Don't flex your millions. Store them! " + Name + " Bank is the flex that lasts!-GPT",
+        Name + " Bank: Legendary protection, with none of the paperwork!-GPT",
+        "Put your money where the walls are thickest  " + Name + " Bank has you covered!-GPT",
+        "Loot secured. Bragging rights intact. Welcome to " + Name + " Bank!-GPT",
+        Name + " Bank: Where paranoia meets preparation!-GPT",
+        "Your money, we guard. " + Name + " Bank wont let you lose it all!-GPT",
+        "Don't get held up. Get set up with " + Name + " Bank vault access!-GPT",
+        "Big bank, bigger safety. Trust Cozzah with your millions!-GPT",
+        "A safe is just furniture. " + Name + " Bank is a fortress!-GPT",
+        "Other banks offer perks. " + Name + " offers protection from everything but your spending habits!-GPT",
+        "Smart players store it. Rich players insure it. Legends bank with Cozzah!-GPT",
+        "Secure your empire one deposit at a time  " + Name + " Bank!-GPT",
+        Name + " Bank: Better than hiding it in your base and praying!-GPT",
+        Name + " Bank: No queues, no cap, just cold hard storage!-GPT",
+        "Vault tech so tight, even we forgot the combination. " + Name + " Bank approved!-GPT",
+        "Get robbed once, blame them. Get robbed twice, blame yourself. Use " + Name + " Bank!-GPT",
+        "You earned it. Let us lock it down. " + Name + " Bank is open for business!-GPT",
+        "A vault a day keeps the raiders away. " + Name + " Bank keeps it real!-GPT",
+        "Store now, smile later. " + Name + " Bank handles your riches like royalty!-GPT",
+        "Our vaults say 'no' louder than your base walls ever could. " + Name + " Bank is the upgrade!-GPT",
+        "Real wealth stays hidden. " + Name + " Bank makes sure of that!-GPT",
+        "You loot, we lock. " + Name + " Bank makes crime prevention stylish!-GPT",
+        "Protect your net worth. Trust " + Name + " Bank to do it right!-GPT"
+    )
+
+    timer("loop", TimeAdvert,0,function() {
+        let Text = Messages[randint(1, Messages:count()), string]
+        #concmd("say /advert {* " + Text + "}") # Sends message to chat
+    })
+}
+
+function number table:get(Name:string) {
+    if (This:exists(Name)) {
+        return This[Name, number]
+    }
+    let FreeID = This:flip():ncount()+1
+
+    if (FreeID >= 300) {
+        error("Too many elements being drawn.")
+    }
+
+    This[Name, number] = FreeID
+    return FreeID
+}
+
+function void wirelink:clear() {
+    This:egpClear()
+    Elements:clear()
+}
+
+    function egpobject text(ID:number, ARGS:table) {
+    return EGP:egpTextLayout(ID, ARGS)
+}
+
+function egpobject circle(ID:number, ARGS:table) {
+    if (ARGS["outline", number]) {
+        return EGP:egpCircleOutline(ID, ARGS)
+    }
+    return EGP:egpCircle(ID, ARGS)
+}
+
+function egpobject box(ID:number, ARGS:table) {
+    if (ARGS["outline", number]) {
+        return EGP:egpRoundedBoxOutline(ID, ARGS)
+    }
+    return EGP:egpRoundedBox(ID, ARGS)
+}
+
+function egpobject line(ID:number, ARGS:table) {
+    return EGP:egpBox(ID, ARGS)
+}
+
+function number repeats(Dur:number) {
+    return Dur * FPS
+}
+
+function void startAnimation(Object:string, Func:function, Dur:number) {
+    Func() # Start immediately
+    timer("Animation_" + Object, 1/FPS, repeats(Dur)-1, function() {
+        Func()
+    })
+}
+
+function void stopAnimation(Object:string) {
+    stoptimer("Animation_" + Object)
+}
+
+function void moveTo(Name:string, Dur:number, Target:vector2) {
+    stopAnimation(Name)  # Only stop animation for this specific object
+    
+    let ID = Elements:get(Name)
+    let Object = EGP:egpobject(ID)
+    let Pos = EGP:egpPos(ID)
+    let Direction = (Target - Pos):normalized()
+    let Distance = Target:distance(Pos)
+    let Repeats = repeats(Dur)
+    let Animation = function() {
+        Object["x", number] = Object["x", number] + Direction:x()*Distance/Repeats
+        Object["y", number] = Object["y", number] + Direction:y()*Distance/Repeats
+    }
+    
+    startAnimation(Name, Animation, Dur)  # Pass the object name to startAnimation
+}
+
+function void rotateTo(Name:string, Dur:number, Angle:number) {
+    stopAnimation(Name)  # Only stop animation for this specific object
+    
+    let ID = Elements:get(Name)
+    let Object = EGP:egpobject(ID)
+    let Distance = Angle - Object["angle", number]
+    let Step = Distance/repeats(Dur)
+    let Animation = function() {
+        Object["angle", number] = Object["angle", number] + Step
+    }
+    
+    startAnimation(Name, Animation, Dur)  # Pass the object name to startAnimation
+}
+
+function string cursorObj(Names:array) {
+    const Cursor = EGP:egpCursor(User)
+    # Iterate through objects
+    for (I = 1, Names:count()) {
+        const ID = Elements:get(Names[I, string])
+        const Object = EGP:egpobject(ID)
+        if (Object:containsPoint(Cursor)) {
+            return Names[I, string]
+        }
+    }
+
+    return ""
+}
+
+function number userInput(Player:entity) { # Check for specific player input
+    return ~User && Player:isValid()
+}
+
+function void restart() {
+    stoptimer("1")
+    stoptimer("2")
+    stoptimer("3")
+    stoptimer("4")
+    stoptimer("5")
+    stoptimer("6")
+    stoptimer("7")
+    stoptimer("Loading")
+    
+    EGP:egpAngle(Elements:get("Ellipse71"),0)
+    EGP:egpAlpha(Elements:get("Ellipse71"),0)
+    EGP:egpAlpha(Elements:get("Ellipse72"),0)
+    EGP:egpAlpha(Elements:get("Rectangle304"),0)
+    
+    EGP:egpAlpha(Elements:get("COLLECT"),255)
+    EGP:egpAlpha(Elements:get("Rectangle38"),255)
+    EGP:egpAlpha(Elements:get("Rectangle37"),255)
+    EGP:egpAlpha(Elements:get("Line5"),255)
+    EGP:egpAlpha(Elements:get("Rectangle36"),255)
+    EGP:egpAlpha(Elements:get("Rectangle39"),255)
+    EGP:egpAlpha(Elements:get("Ellipse3"),255)
+    EGP:egpAlpha(Elements:get("Rectangle40"),255)
+    EGP:egpAlpha(Elements:get("Line7"),255)
+    
+     # Handle Section - Fixed Positions
+    # Create the main rectangles (these remain absolute positioned)
+    box(Elements:get("Rectangle303"), table("x"=74.0, "y"=379.0, "w"=124.0, "h"=124.0, "r"=32, "g"=32, "b"=32, "radius"=0))
+    
+    # Create circles with LOCAL positions relative to Rectangle303 (center of 124x124 = 62, 62)
+    circle(Elements:get("Ellipse23"), table("x"=62.0, "y"=62.0, "w"=56.5, "h"=56.5, "r"=217, "g"=217, "b"=217))
+    circle(Elements:get("Ellipse24"), table("x"=62.0, "y"=62.0, "w"=52.735, "h"=52.735, "r"=42, "g"=42, "b"=42))
+    
+    # Create rectangles with LOCAL positions for the cross pattern (centered in 124x124 area)
+    box(Elements:get("Rectangle56"), table("x"=7.385, "y"=58.235, "w"=109.23, "h"=7.53, "r"=217, "g"=217, "b"=217, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle56"), vec2(62, 62), vec2(0, 0), 45.0)
+    
+    box(Elements:get("Rectangle57"), table("x"=7.385, "y"=58.235, "w"=109.23, "h"=7.53, "r"=217, "g"=217, "b"=217, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle57"), vec2(62, 62), vec2(0, 0), -45.0)
+    
+    # Create corner circles with LOCAL positions (positioned at corners of the cross)
+    circle(Elements:get("Ellipse25"), table("x"=28.0, "y"=28.0, "w"=8.475, "h"=8.475, "r"=157, "g"=156, "b"=156))
+    circle(Elements:get("Ellipse26"), table("x"=28.0, "y"=96.0, "w"=8.475, "h"=8.475, "r"=157, "g"=156, "b"=156))
+    circle(Elements:get("Ellipse27"), table("x"=96.0, "y"=96.0, "w"=8.475, "h"=8.475, "r"=157, "g"=156, "b"=156))
+    circle(Elements:get("Ellipse28"), table("x"=96.0, "y"=28.0, "w"=8.475, "h"=8.475, "r"=157, "g"=156, "b"=156))
+    
+    # Create center circle with LOCAL position (center of Rectangle303) - this will be the parent
+    circle(Elements:get("Ellipse22"), table("x"=62.0, "y"=62.0, "w"=15.065, "h"=15.065, "r"=157, "g"=156, "b"=156))
+    EGP:egpAngle(Elements:get("Ellipse22"),0.0)
+    
+    # Now all other elements use positions RELATIVE to Ellipse22 (which is at center 62,62)
+    # So they need to be offset from that center position
+    circle(Elements:get("Ellipse23"), table("x"=0.0, "y"=0.0, "w"=56.5, "h"=56.5, "r"=217, "g"=217, "b"=217))
+    circle(Elements:get("Ellipse24"), table("x"=0.0, "y"=0.0, "w"=52.735, "h"=52.735, "r"=32, "g"=32, "b"=32))
+    
+    # Cross rectangles centered on Ellipse22
+    box(Elements:get("Rectangle56"), table("x"=-54.615, "y"=-3.765, "w"=109.23, "h"=7.53, "r"=217, "g"=217, "b"=217, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle56"), vec2(-40, 36), vec2(0, 0), 45.0)
+    
+    box(Elements:get("Rectangle57"), table("x"=-54.615, "y"=-3.765, "w"=109.23, "h"=7.53, "r"=217, "g"=217, "b"=217, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle57"), vec2(-36, -40), vec2(0, 0), -45.0)
+    
+    # Corner circles relative to Ellipse22 center
+    circle(Elements:get("Ellipse25"), table("x"=-34.0, "y"=-34.0, "w"=8.475, "h"=8.475, "r"=157, "g"=156, "b"=156))
+    circle(Elements:get("Ellipse26"), table("x"=-34.0, "y"=34.0, "w"=8.475, "h"=8.475, "r"=157, "g"=156, "b"=156))
+    circle(Elements:get("Ellipse27"), table("x"=34.0, "y"=34.0, "w"=8.475, "h"=8.475, "r"=157, "g"=156, "b"=156))
+    circle(Elements:get("Ellipse28"), table("x"=34.0, "y"=-34.0, "w"=8.475, "h"=8.475, "r"=157, "g"=156, "b"=156))
+    
+    box(Elements:get("Rectangle298"), table("x"=351.0-5, "y"=266.0, "w"=40.0, "h"=75.0, "r"=98, "g"=128, "b"=92, "radius"=0))
+    
+    Active = 0
+}
+
+function void animation() {
+    Active = 1
+    Loading = 1
+    
+    EGP:egpAlpha(Elements:get("COLLECT"),0)
+    EGP:egpAlpha(Elements:get("Rectangle38"),0)
+    EGP:egpAlpha(Elements:get("Rectangle37"),0)
+    EGP:egpAlpha(Elements:get("Line5"),0)
+    EGP:egpAlpha(Elements:get("Rectangle36"),0)
+    EGP:egpAlpha(Elements:get("Rectangle39"),0)
+    EGP:egpAlpha(Elements:get("Ellipse3"),0)
+    EGP:egpAlpha(Elements:get("Rectangle40"),0)
+    EGP:egpAlpha(Elements:get("Line7"),0)
+    #loading Section
+    circle(Elements:get("Ellipse71"), table("x"=259.5, "y"=251.5, "w"=22.5, "h"=22.5, "r"=217, "g"=217, "b"=217))
+    circle(Elements:get("Ellipse72"), table("x"=0.0, "y"=0.0, "w"=19.5, "h"=19.5, "r"=17, "g"=201, "b"=17))
+    box(Elements:get("Rectangle304"), table("x"=18.0, "y"=0.0, "w"=6.0, "h"=6.0, "r"=17, "g"=201, "b"=17, "radius"=0))
+    EGP:egpAngle(Elements:get("Ellipse71"),0)
+    
+    EGP:egpParent(Elements:get("Rectangle304"),Elements:get("Ellipse71"))
+    EGP:egpParent(Elements:get("Ellipse72"),Elements:get("Ellipse71"))
+    EGP:egpAlpha(Elements:get("Ellipse71"),255)
+    EGP:egpAlpha(Elements:get("Ellipse72"),255)
+    EGP:egpAlpha(Elements:get("Rectangle304"),255)
+    if(!timerExists("Loading")) {
+        timer("Loading",0.1,0,function() {
+            if(Loading) { EGP:egpAngle(Elements:get("Ellipse71"),EGP:egpAngle(Elements:get("Ellipse71"))+5) }
+            else{
+                stoptimer("Loading")
+                EGP:egpAngle(Elements:get("Ellipse71"),0)
+                EGP:egpAlpha(Elements:get("Ellipse71"),0)
+                EGP:egpAlpha(Elements:get("Ellipse72"),0)
+                EGP:egpAlpha(Elements:get("Rectangle304"),0)
+                EGP:egpAlpha(Elements:get("COLLECT"),255)
+                EGP:egpAlpha(Elements:get("Rectangle38"),255)
+                EGP:egpAlpha(Elements:get("Rectangle37"),255)
+                EGP:egpAlpha(Elements:get("Line5"),255)
+                EGP:egpAlpha(Elements:get("Rectangle36"),255)
+                EGP:egpAlpha(Elements:get("Rectangle39"),255)
+                EGP:egpAlpha(Elements:get("Ellipse3"),255)
+                EGP:egpAlpha(Elements:get("Rectangle40"),255)
+                EGP:egpAlpha(Elements:get("Line7"),255)
+            }
+        })
+    }
+    timer("1",2,function() { moveTo("Rectangle298",2,vec2(346,402)), Current = 0 })
+    timer("2",5,function() { rotateTo("Ellipse22",3,180), Loading = 0})
+    timer("3",11,function() { moveTo("Rectangle303",3,vec2(-50.5,379)) })
+    timer("4",15,function() { moveTo("Rectangle298",1.5,vec2(114,402))})
+    timer("5",18,function() { moveTo("Rectangle303",3,vec2(74,379)) })
+    timer("6",24,function() { rotateTo("Ellipse22",3,-180) })
+    timer("7",28,function() { restart() })
+}
+
+#text(Elements:get("$9,999,999"), table("text"="$"+formatNumberComma(Total), "x"=122.0, "y"=148.0, "w"= 154.0, "h"=20.0, "r"=35, "g"=167, "b"=35, "size"=11, "halign"=2, "valign"=1))
+#text(Elements:get("$300,000"), table("text"="$"+formatNumberComma(Current), "x"=106.0, "y"=86.0, "w"= 96.0, "h"=20.0, "r"=226, "g"=226, "b"=226, "size"=16, "halign"=0, "valign"=1))
+#text(Elements:get("$100,000"), table("text"="$"+formatNumberComma(Last), "x"=122.0, "y"=126.0, "w"= 154.0, "h"=20.0, "r"=226, "g"=226, "b"=226, "size"=11, "halign"=2, "valign"=1))
+
+#text(Elements:get("2/C"), table("text"="0 /C", "x"=224.0, "y"=86.0, "w"= 38.0, "h"=20.0, "r"=30, "g"=178, "b"=0, "size"=15, "halign"=0, "valign"=1))
+
+function void draw() {
+    EGP:clear()
+    EGP:egpDrawTopLeft(1)
+    
+    box(Elements:get("Rectangle270"), table("x"=0.0, "y"=0.0, "w"=512.0, "h"=512.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+    box(Elements:get("Rectangle271"), table("x"=81.0, "y"=17.0, "w"=350.0, "h"=350.0, "r"=15, "g"=15, "b"=15, "radius"=10.0))
+    box(Elements:get("Rectangle272"), table("x"=123.0, "y"=75.0, "w"=265.0, "h"=37.0, "r"=33, "g"=33, "b"=33, "radius"=2.0))
+    box(Elements:get("Rectangle273"), table("x"=122.0, "y"=118.0, "w"=159.0, "h"=62.0, "r"=33, "g"=33, "b"=33, "radius"=2.0))
+    box(Elements:get("Rectangle274"), table("x"=286.0, "y"=118.0, "w"=101.0, "h"=62.0, "r"=33, "g"=33, "b"=33, "radius"=2.0))
+    
+    box(Elements:get("Rectangle301"), table("x"=71.0, "y"=376.0, "w"=130.0, "h"=130.0, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle302"), table("x"=74.0, "y"=379.0, "w"=124.0, "h"=124.0, "r"=103, "g"=103, "b"=103, "radius"=0))
+    
+    #Money Section
+    box(Elements:get("Rectangle297"), table("x"=324.0, "y"=343.0, "w"=83.0, "h"=13.0, "r"=33, "g"=33, "b"=33, "radius"=5.0))
+    
+    box(Elements:get("Rectangle300"), table("x"=-2, "y"=-2, "w"=44.0, "h"=79.0, "r"=65, "g"=87, "b"=61, "radius"=0))
+    box(Elements:get("Rectangle298"), table("x"=351.0-5, "y"=266.0, "w"=40.0, "h"=75.0, "r"=98, "g"=128, "b"=92, "radius"=0))
+    text(Elements:get("$"), table("text"="$", "x"=-2, "y"=-2, "w"= 44.0, "h"=79.0, "r"=255, "g"=255, "b"=255, "size"=51, "halign"=1, "valign"=1))
+    EGP:egpParent(Elements:get("Rectangle300"),Elements:get("Rectangle298"))
+    EGP:egpParent(Elements:get("$"),Elements:get("Rectangle298"))
+    
+    box(Elements:get("Rectangle299"), table("x"=326.0, "y"=263.0, "w"=79.0, "h"=80.0, "r"=15, "g"=15, "b"=15, "radius"=0))
+    box(Elements:get("Rectangle276"), table("x"=135.0, "y"=326.0, "w"=243.0, "h"=5.0, "r"=255, "g"=215, "b"=0, "radius"=3.0))
+    box(Elements:get("Rectangle277"), table("x"=232.0, "y"=221.0, "w"=55.0, "h"=60.0, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle278"), table("x"=234.0, "y"=223.0, "w"=51.0, "h"=56.0, "r"=17, "g"=201, "b"=17, "radius"=0))
+    box(Elements:get("Rectangle283"), table("x"=314.0, "y"=267.0, "w"=76.0, "h"=23.0, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle284"), table("x"=316.0, "y"=269.0, "w"=72.0, "h"=19.0, "r"=17, "g"=201, "b"=17, "radius"=0))
+    box(Elements:get("Rectangle293"), table("x"=314.0, "y"=238.0, "w"=76.0, "h"=23.0, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle294"), table("x"=316.0, "y"=240.0, "w"=72.0, "h"=19.0, "r"=17, "g"=201, "b"=17, "radius"=0))
+    box(Elements:get("Rectangle295"), table("x"=314.0, "y"=210.0, "w"=76.0, "h"=23.0, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle296"), table("x"=316.0, "y"=212.0, "w"=72.0, "h"=19.0, "r"=17, "g"=201, "b"=17, "radius"=0))
+    box(Elements:get("Rectangle285"), table("x"=314.0, "y"=80.0, "w"=70.0, "h"=20.0, "r"=217, "g"=217, "b"=217, "radius"=0))
+    EGP:egpMaterial(Elements:get("Rectangle285"),"taumats/printer/tau_printerlogo")
+    box(Elements:get("Rectangle286"), table("x"=215.0, "y"=77.0, "w"=2.0, "h"=33.0, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle287"), table("x"=221.0, "y"=105.0, "w"=85.0, "h"=2.0, "r"=217, "g"=217, "b"=217, "radius"=2.0))
+    box(Elements:get("Rectangle288"), table("x"=125.0, "y"=105.0, "w"=85.0, "h"=2.0, "r"=217, "g"=217, "b"=217, "radius"=2.0))
+    box(Elements:get("Rectangle289"), table("x"=285.0, "y"=79.0, "w"=23.0, "h"=21.0, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle290"), table("x"=286.0, "y"=80.0, "w"=21.0, "h"=19.0, "r"=34, "g"=34, "b"=34, "radius"=0))
+    circle(Elements:get("Ellipse70"), table("x"=337.5, "y"=165.5, "w"=42.5, "h"=42.5, "r"=44, "g"=214, "b"=100))
+    circle(Elements:get("Ellipse69"), table("x"=337.5, "y"=165.5, "w"=37.5, "h"=37.5, "r"=33, "g"=33, "b"=33))
+    box(Elements:get("Rectangle292"), table("x"=290.0, "y"=180.0, "w"=108.0, "h"=30.0, "r"=15, "g"=15, "b"=15, "radius"=0))
+    box(Elements:get("Rectangle291"), table("x"=292.0, "y"=166.0, "w"=90.0, "h"=15.0, "r"=33, "g"=33, "b"=33, "radius"=2.0))
+    box(Elements:get("Rectangle275"), table("x"=122.0, "y"=202.0, "w"=267.0, "h"=2.0, "r"=217, "g"=217, "b"=217, "radius"=2.0))
+    text(Elements:get("Lvl.99"), table("text"="Lvl. 3", "x"=122.0, "y"=116.0, "w"= 153.0, "h"=20.0, "r"=226, "g"=226, "b"=226, "size"=11, "halign"=2, "valign"=1))
+    text(Elements:get("$100,000"), table("text"="$0", "x"=122.0, "y"=126.0, "w"= 154.0, "h"=20.0, "r"=226, "g"=226, "b"=226, "size"=11, "halign"=2, "valign"=1))
+    text(Elements:get("$300,000"), table("text"="$0", "x"=126.0, "y"=86.0, "w"= 96.0, "h"=20.0, "r"=226, "g"=226, "b"=226, "size"=16, "halign"=0, "valign"=1))
+    text(Elements:get("2/C"), table("text"="0 /C", "x"=224.0, "y"=86.0, "w"= 38.0, "h"=20.0, "r"=30, "g"=178, "b"=0, "size"=15, "halign"=0, "valign"=1))
+    text(Elements:get("Time"), table("text"="0/hours", "x"=123.0, "y"=158.0, "w"= 153.0, "h"=20.0, "r"=226, "g"=226, "b"=226, "size"=11, "halign"=2, "valign"=1))
+    text(Elements:get("$9,999,999"), table("text"="$0", "x"=122.0, "y"=148.0, "w"= 154.0, "h"=20.0, "r"=35, "g"=167, "b"=35, "size"=11, "halign"=2, "valign"=1))
+    text(Elements:get("1" + "$300,000"), table("text"="$300,000", "x"=122.0, "y"=139.0, "w"= 154.0, "h"=16.0, "r"=226, "g"=226, "b"=226, "size"=11, "halign"=2, "valign"=1))
+    text(Elements:get("Cooler"), table("text"="Cooler Rating:", "x"=126.0, "y"=116.0, "w"= 155.0, "h"=20.0, "r"=101, "g"=101, "b"=101, "size"=11, "halign"=0, "valign"=1))
+    text(Elements:get("Storage"), table("text"="Storage", "x"=122.0, "y"=74.0, "w"= 44.0, "h"=15.0, "r"=101, "g"=101, "b"=101, "size"=11, "halign"=1, "valign"=1))
+    text(Elements:get("0%"), table("text"="0%", "x"=285.0, "y"=165.0, "w"= 23.0, "h"=13.0, "r"=101, "g"=101, "b"=101, "size"=10, "halign"=1, "valign"=1))
+    text(Elements:get("100%"), table("text"="100%", "x"=355.0, "y"=165.0, "w"= 34.0, "h"=13.0, "r"=101, "g"=101, "b"=101, "size"=10, "halign"=1, "valign"=1))
+    text(Elements:get("1" + "100%"), table("text"="100%", "x"=317.0, "y"=145.0, "w"= 41.0, "h"=19.0, "r"=253, "g"=253, "b"=253, "size"=16, "halign"=1, "valign"=1))
+    text(Elements:get("Temperature"), table("text"="Temperature", "x"=221.0, "y"=77.0, "w"= 60.0, "h"=12.0, "r"=101, "g"=101, "b"=101, "size"=11, "halign"=1, "valign"=1))
+    text(Elements:get("Last"), table("text"="Last Print:", "x"=126.0, "y"=127.0, "w"= 155.0, "h"=20.0, "r"=101, "g"=101, "b"=101, "size"=11, "halign"=0, "valign"=1))
+    text(Elements:get("StorageCapacit"), table("text"="Storage Capacity:", "x"=126.0, "y"=137.0, "w"= 155.0, "h"=20.0, "r"=101, "g"=101, "b"=101, "size"=11, "halign"=0, "valign"=1))
+    text(Elements:get("Total"), table("text"="Total Printed:", "x"=125.0, "y"=146.0, "w"= 155.0, "h"=22.0, "r"=101, "g"=101, "b"=101, "size"=11, "halign"=0, "valign"=1))
+    text(Elements:get("Lifetime"), table("text"="Lifetime:", "x"=125.0, "y"=159.0, "w"= 156.0, "h"=20.0, "r"=101, "g"=101, "b"=101, "size"=11, "halign"=0, "valign"=1))
+    text(Elements:get("$50k/ea"), table("text"="$50k/ea", "x"=337.0, "y"=184.0, "w"= 52.0, "h"=20.0, "r"=236, "g"=236, "b"=236, "size"=13, "halign"=1, "valign"=1))
+    text(Elements:get("2" + "$300,000"), table("text"="$300,000", "x"=123.0, "y"=220.0, "w"= 69.0, "h"=20.0, "r"=236, "g"=236, "b"=236, "size"=13, "halign"=0, "valign"=1))
+    text(Elements:get("Upgrade"), table("text"="Upgrade", "x"=304.0, "y"=211.0, "w"= 96.0, "h"=20.0, "r"=236, "g"=236, "b"=236, "size"=13, "halign"=1, "valign"=1))
+    text(Elements:get("1" + "Upgrade"), table("text"="Upgrade", "x"=304.0, "y"=239.0, "w"= 96.0, "h"=20.0, "r"=236, "g"=236, "b"=236, "size"=13, "halign"=1, "valign"=1))
+    text(Elements:get("2" + "Upgrade"), table("text"="Upgrade", "x"=304.0, "y"=269.0, "w"= 96.0, "h"=20.0, "r"=236, "g"=236, "b"=236, "size"=13, "halign"=1, "valign"=1))
+    text(Elements:get("Level1"), table("text"="Level 3", "x"=123.0, "y"=253.0, "w"= 48.0, "h"=15.0, "r"=236, "g"=236, "b"=236, "size"=13, "halign"=0, "valign"=1))
+    text(Elements:get("1" + "Level1"), table("text"="Level 3", "x"=123.0, "y"=278.0, "w"= 48.0, "h"=15.0, "r"=236, "g"=236, "b"=236, "size"=13, "halign"=0, "valign"=1))
+    text(Elements:get("OwnerName"), table("text"=limitNameLength(BankName, 10), "x"=123.0, "y"=292.0, "w"= 55.0, "h"=21.0, "r"=236, "g"=236, "b"=236, "size"=14, "halign"=0, "valign"=1))
+    text(Elements:get("LEGENDARYPRINT"), table("text"="LEGENDARY PRINTER", "x"=262.0, "y"=288.0, "w"= 128.0, "h"=21.0, "r"=255, "g"=215, "b"=0, "size"=14, "halign"=1, "valign"=1))
+    text(Elements:get("FanSpeed"), table("text"="Fan Speed", "x"=123.0, "y"=240.0, "w"= 55.0, "h"=16.0, "r"=92, "g"=92, "b"=92, "size"=12, "halign"=0, "valign"=1))
+    text(Elements:get("MaxStorage"), table("text"="Max Storage", "x"=123.0, "y"=211.0, "w"= 63.0, "h"=16.0, "r"=92, "g"=92, "b"=92, "size"=12, "halign"=0, "valign"=1))
+    text(Elements:get("Armor"), table("text"="Armor", "x"=123.0, "y"=267.0, "w"= 46.0, "h"=16.0, "r"=92, "g"=92, "b"=92, "size"=12, "halign"=0, "valign"=1))
+    text(Elements:get("PrinterUpgrade"), table("text"="Printer Upgrades", "x"=123.0, "y"=185.0, "w"= 109.0, "h"=20.0, "r"=236, "g"=236, "b"=236, "size"=15, "halign"=1, "valign"=1))
+    text(Elements:get("COOL"), table("text"="COOL", "x"=248.0, "y"=79.0, "w"= 96.0, "h"=20.0, "r"=226, "g"=226, "b"=226, "size"=9, "halign"=1, "valign"=1))
+    
+    box(Elements:get("Rectangle331"), table("x"=221.0, "y"=105.0, "w"=0, "h"=2.0, "r"=30, "g"=200, "b"=30, "radius"=2.0))
+        
+    #PrinterICO Section
+    text(Elements:get("COLLECT"), table("text"="COLLECT", "x"=232.0, "y"=261.0, "w"= 54.0, "h"=20.0, "r"=236, "g"=236, "b"=236, "size"=13, "halign"=1, "valign"=1))
+    box(Elements:get("Rectangle38"), table("x"=236.0, "y"=233.0, "w"=46.0, "h"=20.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+    box(Elements:get("Rectangle37"), table("x"=248.0, "y"=226.0, "w"=22.0, "h"=32.0, "r"=217, "g"=217, "b"=217, "radius"=0))
+    line(Elements:get("Line5"), table("x"=249.0, "y"=255.0, "w"=14.0, "h"=1.0, "r"=42, "g"=42, "b"=42))
+    box(Elements:get("Rectangle36"), table("x"=237.0, "y"=234.0, "w"=44.0, "h"=18.0, "r"=217, "g"=217, "b"=217, "radius"=0))
+    box(Elements:get("Rectangle39"), table("x"=238.0, "y"=235.0, "w"=42.0, "h"=16.0, "r"=42, "g"=42, "b"=42, "radius"=0))
+    circle(Elements:get("Ellipse3"), table("x"=276.0, "y"=239.5, "w"=2.0, "h"=1.5, "r"=217, "g"=217, "b"=217))
+    box(Elements:get("Rectangle40"), table("x"=248.0, "y"=247.0, "w"=22.0, "h"=4.0, "r"=217, "g"=217, "b"=217, "radius"=0))
+    line(Elements:get("Line7"), table("x"=249.0, "y"=252.0, "w"=17.0, "h"=1.0, "r"=42, "g"=42, "b"=42))
+
+
+    # Handle Section - Fixed Positions
+    # Create the main rectangles (these remain absolute positioned)
+    box(Elements:get("Rectangle303"), table("x"=74.0, "y"=379.0, "w"=124.0, "h"=124.0, "r"=32, "g"=32, "b"=32, "radius"=0))
+    
+    # Create circles with LOCAL positions relative to Rectangle303 (center of 124x124 = 62, 62)
+    circle(Elements:get("Ellipse23"), table("x"=62.0, "y"=62.0, "w"=56.5, "h"=56.5, "r"=217, "g"=217, "b"=217))
+    circle(Elements:get("Ellipse24"), table("x"=62.0, "y"=62.0, "w"=52.735, "h"=52.735, "r"=42, "g"=42, "b"=42))
+    
+    # Create rectangles with LOCAL positions for the cross pattern (centered in 124x124 area)
+    box(Elements:get("Rectangle56"), table("x"=7.385, "y"=58.235, "w"=109.23, "h"=7.53, "r"=217, "g"=217, "b"=217, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle56"), vec2(62, 62), vec2(0, 0), 45.0)
+    
+    box(Elements:get("Rectangle57"), table("x"=7.385, "y"=58.235, "w"=109.23, "h"=7.53, "r"=217, "g"=217, "b"=217, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle57"), vec2(62, 62), vec2(0, 0), -45.0)
+    
+    # Create corner circles with LOCAL positions (positioned at corners of the cross)
+    circle(Elements:get("Ellipse25"), table("x"=28.0, "y"=28.0, "w"=8.475, "h"=8.475, "r"=157, "g"=156, "b"=156))
+    circle(Elements:get("Ellipse26"), table("x"=28.0, "y"=96.0, "w"=8.475, "h"=8.475, "r"=157, "g"=156, "b"=156))
+    circle(Elements:get("Ellipse27"), table("x"=96.0, "y"=96.0, "w"=8.475, "h"=8.475, "r"=157, "g"=156, "b"=156))
+    circle(Elements:get("Ellipse28"), table("x"=96.0, "y"=28.0, "w"=8.475, "h"=8.475, "r"=157, "g"=156, "b"=156))
+    
+    # Create center circle with LOCAL position (center of Rectangle303) - this will be the parent
+    circle(Elements:get("Ellipse22"), table("x"=62.0, "y"=62.0, "w"=15.065, "h"=15.065, "r"=157, "g"=156, "b"=156))
+    
+    # Parent the center circle to Rectangle303 first
+    EGP:egpParent(Elements:get("Ellipse22"), Elements:get("Rectangle303"))
+    
+    # Now all other elements use positions RELATIVE to Ellipse22 (which is at center 62,62)
+    # So they need to be offset from that center position
+    circle(Elements:get("Ellipse23"), table("x"=0.0, "y"=0.0, "w"=56.5, "h"=56.5, "r"=217, "g"=217, "b"=217))
+    circle(Elements:get("Ellipse24"), table("x"=0.0, "y"=0.0, "w"=52.735, "h"=52.735, "r"=32, "g"=32, "b"=32))
+    
+    # Cross rectangles centered on Ellipse22
+    box(Elements:get("Rectangle56"), table("x"=-54.615, "y"=-3.765, "w"=109.23, "h"=7.53, "r"=217, "g"=217, "b"=217, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle56"), vec2(-40, 36), vec2(0, 0), 45.0)
+    
+    box(Elements:get("Rectangle57"), table("x"=-54.615, "y"=-3.765, "w"=109.23, "h"=7.53, "r"=217, "g"=217, "b"=217, "radius"=0))
+    EGP:egpAngle(Elements:get("Rectangle57"), vec2(-36, -40), vec2(0, 0), -45.0)
+    
+    # Corner circles relative to Ellipse22 center
+    circle(Elements:get("Ellipse25"), table("x"=-34.0, "y"=-34.0, "w"=8.475, "h"=8.475, "r"=157, "g"=156, "b"=156))
+    circle(Elements:get("Ellipse26"), table("x"=-34.0, "y"=34.0, "w"=8.475, "h"=8.475, "r"=157, "g"=156, "b"=156))
+    circle(Elements:get("Ellipse27"), table("x"=34.0, "y"=34.0, "w"=8.475, "h"=8.475, "r"=157, "g"=156, "b"=156))
+    circle(Elements:get("Ellipse28"), table("x"=34.0, "y"=-34.0, "w"=8.475, "h"=8.475, "r"=157, "g"=156, "b"=156))
+    
+    # Parent all elements to Ellipse22 (the center circle)
+    EGP:egpParent(Elements:get("Ellipse23"), Elements:get("Ellipse22"))
+    EGP:egpParent(Elements:get("Ellipse24"), Elements:get("Ellipse22"))
+    EGP:egpParent(Elements:get("Rectangle56"), Elements:get("Ellipse22"))
+    EGP:egpParent(Elements:get("Rectangle57"), Elements:get("Ellipse22"))
+    EGP:egpParent(Elements:get("Ellipse25"), Elements:get("Ellipse22"))
+    EGP:egpParent(Elements:get("Ellipse26"), Elements:get("Ellipse22"))
+    EGP:egpParent(Elements:get("Ellipse27"), Elements:get("Ellipse22"))
+    EGP:egpParent(Elements:get("Ellipse28"), Elements:get("Ellipse22"))
+    EGP:egpParent(Elements:get("Ellipse22"), Elements:get("Rectangle303"))   
+}
+
+function void setState() {
+    findIncludePlayerProps(owner())
+    findInSphere(entity():pos(), 1000)
+    let Props = findToTable()
+    let PropCount = Props:count()
+    let Collisions = 0
+    foreach(_:number, Prop:entity = Props) {
+        Prop:setMass(3000)
+        if(Prop == Prop01) { Prop:setCollisionGroup(20), Collisions++ }
+        elseif(Prop == Prop02) { Prop:setCollisionGroup(20), Collisions++ }
+        elseif(Prop == Prop03) { Prop:setCollisionGroup(20), Collisions++ }
+        elseif(Prop == Prop04) { Prop:setCollisionGroup(20), Collisions++ }
+        elseif(Prop == Prop05) { Prop:setCollisionGroup(20), Collisions++ }
+        elseif(Prop == Prop06) { Prop:setCollisionGroup(20), Collisions++ }
+        elseif(Prop == Prop07) { Prop:setCollisionGroup(20), Collisions++ }
+        elseif(Prop == Prop08) { Prop:setCollisionGroup(20), Collisions++ }
+        elseif(Prop == Prop09) { Prop:setCollisionGroup(20), Collisions++ }
+        elseif(Prop == Prop10) { Prop:setCollisionGroup(20), Collisions++ }
+        elseif(Prop == Prop11) { Prop:setCollisionGroup(20), Collisions++ }
+        elseif(Prop == Prop12) { Prop:setCollisionGroup(20), Collisions++ }
+        elseif(Prop == Prop13) { Prop:setCollisionGroup(20), Collisions++ }
+    }
+    print("{green " + PropCount + "} Props Mass set to 3000")
+    print("{green " + Collisions + "} Props collisions set")
+}
+
+if(first() || dupefinished()) {
+    timer("time",1,0,function() {
+        Time++
+        
+        Profit = owner():moneyAmount() - Wallet
+        text(Elements:get("TOTALBANKPROFIT"), table("text"="TOTAL BANK PROFIT: " + "$" + formatNumberComma(Profit), "x"=90.0, "y"=17.0, "w"= 331.0, "h"=57.0, "r"=255, "g"=255, "b"=255, "size"=23, "halign"=1, "valign"=1))
+        
+        text(Elements:get("Time"), table("text"=formatTimeInSeconds(Time), "x"=123.0, "y"=158.0, "w"= 153.0, "h"=20.0, "r"=226, "g"=226, "b"=226, "size"=11, "halign"=2, "valign"=1))
+        Add = randint(0,100)
+        if(Add > 95) {
+            if(Temp > randint(85,100)) {
+                Temp = 0
+                EGP:egpColor(Elements:get("2/C"),vec(30,178,0))
+                box(Elements:get("Rectangle331"), table("x"=221.0, "y"=105.0, "w"=(85.0/100)*Temp, "h"=2.0, "r"=30, "g"=200, "b"=30, "radius"=2.0))
+            }
+            Temp += randint(1,3)
+            text(Elements:get("2/C"), table("text"=Temp + " /C", "x"=224.0, "y"=86.0, "w"= 38.0, "h"=20.0, "r"=30, "g"=178, "b"=0, "size"=15, "halign"=0, "valign"=1))
+            if(Temp > 75) {
+                EGP:egpColor(Elements:get("2/C"),vec(200,0,0))
+                box(Elements:get("Rectangle331"), table("x"=221.0, "y"=105.0, "w"=(85.0/100)*Temp, "h"=2.0, "r"=200, "g"=0, "b"=0, "radius"=2.0))
+            }
+            EGP:egpSize(Elements:get("Rectangle331"),vec2((Temp*85.0)/100,2.0))
+        }
+    })
+    
+    timer("Last",3,0,function() {
+        let LastAmout = randint(700,720)
+        Total += LastAmout
+        Current += LastAmout
+        Last = LastAmout
+        text(Elements:get("$100,000"), table("text"="$"+formatNumberComma(Last), "x"=122.0, "y"=126.0, "w"= 154.0, "h"=20.0, "r"=226, "g"=226, "b"=226, "size"=11, "halign"=2, "valign"=1))
+        text(Elements:get("$9,999,999"), table("text"="$"+formatNumberComma(Total), "x"=122.0, "y"=148.0, "w"= 154.0, "h"=20.0, "r"=35, "g"=167, "b"=35, "size"=11, "halign"=2, "valign"=1))
+        text(Elements:get("$300,000"), table("text"="$"+formatNumberComma(Current), "x"=126.0, "y"=86.0, "w"= 96.0, "h"=20.0, "r"=226, "g"=226, "b"=226, "size"=16, "halign"=0, "valign"=1))
+        
+        box(Elements:get("Rectangle330"), table("x"=125.0, "y"=105.0, "w"=(Current * 85) / 300000, "h"=2.0, "r"=30, "g"=200, "b"=30, "radius"=2.0))
+    })
+    
+    timer("check",10,0,function() {
+        if(Current > randint(250000,300000)) {
+            animation()
+        }
+    })
+    setState()
+    draw()
+}
+
+if(~EGP) {reset() }
+
+if(userInput(User)) {
+    let Cursor = cursorObj(array("Rectangle277", "Rectangle289"))
+    switch (Cursor) {
+        case "Rectangle277",
+            if(User:isValid() && User:name() != "") { 
+                moneyRequest(User,1,5,"YOU WISH")
+            }
+        break,
+        case "Rectangle289",
+            if(User:isValid() && User:name() != "") { 
+                moneyRequest(User,1,5,"THANK YOU")
+            }
+        break,
+    }
+}
+
+if(moneyClk()) {
+    if(moneyClkTitle() == "YOU WISH") {
+        if(!Active) { animation() }
+    }
+    if(moneyClkTitle() == "THANK YOU") {
+        Temp = 0
+        text(Elements:get("2/C"), table("text"=Temp + " /C", "x"=224.0, "y"=86.0, "w"= 38.0, "h"=20.0, "r"=30, "g"=178, "b"=0, "size"=15, "halign"=0, "valign"=1))
+        EGP:egpColor(Elements:get("2/C"),vec(30,178,0))
+        box(Elements:get("Rectangle331"), table("x"=221.0, "y"=105.0, "w"=(85.0/100)*Temp, "h"=2.0, "r"=30, "g"=200, "b"=30, "radius"=2.0))
+    }
+}
+
+event chat(Player:entity, Message:string, _:number) {
+    if(Player == owner() && Message:sub(1, 1) == "*") {
+        let Args = Message:explode(" ")
+        let Command = Args[1, string]:upper()
+        Args:remove(1)
+        
+        switch(Command:sub(2)) {
+            case "COPS",
+                hideChat(1)
+                let Amount = 100000
+                if(Amount) {
+                    let Count = 0
+                    findIncludeClass("player")
+                    findInSphere(entity():pos(),1000)
+                    let Players = findToTable()
+                    foreach(_:number, Player:entity = Players) {
+                        let Job = Player:team():teamName()
+                        let IsLawEnforcement = 0
+                        for(I = 1, JOB:count()) {
+                            if(JOB[I, string] == Job) {
+                                IsLawEnforcement = 1
+                                break
+                            }
+                        }
+                        if(IsLawEnforcement) {
+                            moneyGive(Player,Amount)
+                            Player:tauSendChatMsg("{green You received $" + Amount + " from " + BankName)
+                            Count++
+                        }
+                    }
+                    print("Paid $" + Amount + " to " + Count + " law enforcement players")
+                }
+                else{ print("{! INVALID INPUT}") }
+            break
+            case "SETSTATE",
+                hideChat(1)
+                setState()
+            break
+            case "NAME",
+                Ent = owner():aimEntity()
+                print("Table = " + Ent:keyvalues():toString())
+            break
+        }
+    }
+}

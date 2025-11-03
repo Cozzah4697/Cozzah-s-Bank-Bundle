@@ -1,0 +1,53 @@
+@name Tomato Animations Edited By Cozzah
+@persist FPS:number
+#include "CozzahsBankBundle/includes/ui"
+##include "CozzahsBankBundle/includes/ui_loodle"
+if (first()) {
+    FPS = 30 # Frames per second
+}
+
+function number repeats(Dur:number) {
+    return Dur * FPS
+}
+
+function void startAnimation(Object:string, Func:function, Dur:number) {
+    Func() # Start immediately
+    timer("Animation_" + Object, 1/FPS, repeats(Dur)-1, function() {
+        Func()
+    })
+}
+
+function void stopAnimation(Object:string) {
+    stoptimer("Animation_" + Object)
+}
+
+function void moveTo(Elements:table, Name:string, Dur:number, Target:vector2) {
+    stopAnimation(Name)  # Only stop animation for this specific object
+    
+    let ID = Elements:get(Name)
+    let Object = EGP:egpobject(ID)
+    let Pos = EGP:egpPos(ID)
+    let Direction = (Target - Pos):normalized()
+    let Distance = Target:distance(Pos)
+    let Repeats = repeats(Dur)
+    let Animation = function() {
+        Object["x", number] = Object["x", number] + Direction:x()*Distance/Repeats
+        Object["y", number] = Object["y", number] + Direction:y()*Distance/Repeats
+    }
+    
+    startAnimation(Name, Animation, Dur)  # Pass the object name to startAnimation
+}
+
+function void rotateTo(Name:string, Dur:number, Angle:number) {
+    stopAnimation(Name)  # Only stop animation for this specific object
+    
+    let ID = Elements:get(Name)
+    let Object = EGP:egpobject(ID)
+    let Distance = Angle - Object["angle", number]
+    let Step = Distance/repeats(Dur)
+    let Animation = function() {
+        Object["angle", number] = Object["angle", number] + Step
+    }
+    
+    startAnimation(Name, Animation, Dur)  # Pass the object name to startAnimation
+}
