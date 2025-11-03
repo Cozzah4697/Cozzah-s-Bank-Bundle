@@ -36,14 +36,14 @@ While looking at a customer's rack, you see:
 - Color-coded tier display (Diamond=cyan, Gold=yellow, Silver=gray, Copper=brown, Guards=blue)
 
 ### Tax Rates by Tier
-| Tier | Tax Rate | Insurance |
-|------|----------|-----------|
-| Copper (Default) | 35% | 0% |
-| Silver | 25% | 50% |
-| Gold | 20% | 75% |
-| Diamond | 10% | 100% |
-| Ruby | 1% | 100% |
-| Security Guards | 0% | N/A |
+| Tier | Tax Rate | Insurance | Permanent Cost | Temporary Cost |
+|------|----------|-----------|----------------|----------------|
+| Copper (Default) | 35% | 0% | Free | N/A |
+| Silver | 25% | 50% | $1,000,000 | $500,000 |
+| Gold | 20% | 75% | $2,000,000 | $1,000,000 |
+| Diamond | 10% | 100% | $5,000,000 | $2,500,000 |
+| Ruby | 0% | 100% | Admin-only | Admin-only |
+| Security Guards | 0% | N/A | Job-based | Job-based |
 
 ### Smart Rack Tracking
 - Automatically remembers which customer owns each rack
@@ -203,19 +203,35 @@ When customers deposit at your bank:
 ## Bank Membership E2
 
 ### Overview
-The Bank Membership E2 manages all customer membership tiers and upgrades at your bank. It provides an interactive touchscreen where customers can purchase permanent membership passes (Silver, Gold, Diamond, or Ruby) that reduce their tax rates and provide insurance benefits. All membership data is automatically saved to file and synced with the Banker E2 Main chip for seamless tax calculations.
+The Bank Membership E2 manages all customer membership tiers and upgrades at your bank. It provides an interactive touchscreen where customers can purchase **permanent membership passes** (never expire) or **temporary session passes** (half price, expire on disconnect) that reduce their tax rates and provide insurance benefits. All membership data is automatically saved to file and synced with the Banker E2 Main chip for seamless tax calculations.
+
+### Dual Membership System
+
+#### Permanent Memberships
+- **One-time purchase** - Never expires, survives server restarts
+- **Full benefits** - Complete tax reduction and insurance coverage
+- **File persistence** - Saved in `banker_memberdata.txt`
+- **Highest value** - Best long-term investment for regular customers
+
+#### Temporary Memberships  
+- **Half price** - 50% of permanent tier cost
+- **Session-based** - Lasts until player disconnects
+- **Same benefits** - Identical tax rate and insurance as permanent
+- **Trial option** - Perfect for testing tiers before committing
+- **Upgrade path** - Can purchase permanent at any time
 
 ### Membership Tiers & Pricing
 
-| Tier | Tax Rate | Insurance | Cost | Notes |
-|------|----------|-----------|------|-------|
-| **Copper** (Default) | 35% | 0% | Free | Everyone starts here |
-| **Silver** | 25% | 50% | $1,000,000 | 10% less tax than Copper |
-| **Gold** | 20% | 75% | $2,000,000 | 15% less tax than Copper |
-| **Diamond** | 10% | 100% | $5,000,000 | Best tax rate available |
-| **Ruby** | 1% | 100% | Admin-only | VIP/Friend tier |
+| Tier | Tax Rate | Insurance | Permanent Cost | Temporary Cost | Notes |
+|------|----------|-----------|----------------|----------------|-------|
+| **Copper** (Default) | 35% | 0% | Free | N/A | Everyone starts here |
+| **Silver** | 25% | 50% | $1,000,000 | $500,000 | 10% less tax than Copper |
+| **Gold** | 20% | 75% | $2,000,000 | $1,000,000 | 15% less tax than Copper |
+| **Diamond** | 10% | 100% | $5,000,000 | $2,500,000 | Best available tax rate |
+| **Ruby** | 0% | 100% | Admin-only | Admin-only | VIP/Friend tier |
 
-> All memberships are **one-time permanent passes** that never expire
+> All permanent memberships are **one-time purchases** that never expire  
+> Temporary memberships provide **identical benefits** at half the cost but expire on disconnect
 
 ### Dual Membership System
 
@@ -283,21 +299,53 @@ The E2 supports both **permanent** and **temporary** memberships:
 
 #### Membership Management
 
-**Permanent Tier Commands:**
-- `*give [player] [tier_number]` - Manually grants **permanent** membership tier to a player for free
-  - Tier numbers: `1`=Silver, `2`=Gold, `3`=Diamond, `4`=Ruby
-  - Example: `*give John 3` (gives Diamond to John)
-  - Prevents downgrades (can't give Silver to Gold member)
-  - Sends confirmation to both admin and player
-  
-**Useful for:**
-- Promotional giveaways
-- Fixing payment issues
-- Rewarding loyal customers
-- Staff benefits
+**Core Commands:**
+- `*help` - Display all available admin commands with descriptions
+- `*ruby [player]` - Grant Ruby tier membership (VIP/friends tier, 0% tax, 100% insurance)
+  - Example: `*ruby John`
+  - Highest tier available
+  - Admin-only, cannot be purchased
+- `*remove [player]` - Remove player's permanent membership
+  - Issues full refund of original purchase price
+  - Resets player to Copper (default) tier
+  - Useful for resolving issues or accommodating refund requests
+- `*members` - List all members with their tier information
+  - Shows both permanent and temporary tiers
+  - Color-coded tier names
+  - Comprehensive customer roster
+- `*membership [player]` - Show detailed tier breakdown for specific player
+  - Displays permanent tier
+  - Displays temporary tier
+  - Shows effective tier (higher of permanent or temporary)
+  - Example: Player with Gold permanent + Diamond temp = Diamond effective
+- `*broadcast` - Force immediate data synchronization
+  - Manually triggers data sync to all bank E2s
+  - Useful after making manual changes
+  - Ensures all systems have latest membership data
 
-**Temporary Tier Commands:**
-- `*granttemp [player] [tier_number]` - Grants **temporary** membership tier
+**Useful For:**
+- VIP treatment for friends and staff (Ruby tier)
+- Resolving customer issues with refunds (*remove command)
+- Managing high-value customers
+- Monitoring membership distribution (*members command)
+- Troubleshooting tier-related problems (*membership command)
+
+### Customer Purchase Interface
+
+#### Interactive Touchscreen with Dual Purchase Options
+Customers can purchase memberships themselves through the EGP screen. Each tier (Silver, Gold, Diamond) now offers two purchase options:
+
+**1. Permanent Pass ("PERM" button)**
+- One-time purchase at full price
+- Never expires - keeps tier forever across all sessions
+- File-saved and persists through server restarts
+- Best value for regular customers
+
+**2. Temporary Pass ("TEMP" button)**  
+- Half-price option (50% of permanent cost)
+- Same benefits as permanent (identical tax rate and insurance)
+- Lasts until player disconnects from server
+- Perfect for trial runs, short-term printing, or cost-effective occasional use
   - Tier numbers: `1`=Silver, `2`=Gold, `3`=Diamond
   - Example: `*granttemp Sarah 2` (gives temporary Gold to Sarah)
   - Separate from permanent tier - player can have both
@@ -322,13 +370,13 @@ The E2 supports both **permanent** and **temporary** memberships:
 
 **Usage Examples:**
 ```
-*give John 1           → Grants permanent Silver to John
-*give Sarah 2          → Grants permanent Gold to Sarah
-*give Mike 3           → Grants permanent Diamond to Mike
-*granttemp Alex 2      → Grants temporary Gold to Alex
-*listtemp              → Shows all temporary memberships
-*membership John       → Shows John's permanent, temp, and effective tiers
-*cleartemp             → Removes all temporary memberships
+*give John 1           â†’ Grants permanent Silver to John
+*give Sarah 2          â†’ Grants permanent Gold to Sarah
+*give Mike 3           â†’ Grants permanent Diamond to Mike
+*granttemp Alex 2      â†’ Grants temporary Gold to Alex
+*listtemp              â†’ Shows all temporary memberships
+*membership John       â†’ Shows John's permanent, temp, and effective tiers
+*cleartemp             â†’ Removes all temporary memberships
 ```
 
 ### Key Features
@@ -412,8 +460,8 @@ Membership cards displayed side-by-side, each card shows:
 ### Technical Details
 
 #### Data Storage
-- Stores Steam ID → Tier Number mapping
-- Example: `"STEAM_0:1:12345" → 3` (Diamond)
+- Stores Steam ID â†’ Tier Number mapping
+- Example: `"STEAM_0:1:12345" â†’ 3` (Diamond)
 - Efficient lookup for tax calculations
 - Minimal memory footprint
 - Separate storage for permanent and temporary tiers
@@ -1043,8 +1091,8 @@ Real-time deposit interface:
 
 #### Data Format
 Sends to Banker Main E2:
-- Rack ownership table (Steam ID → Rack data)
-- Printer count table (Steam ID → Printer types/counts)
+- Rack ownership table (Steam ID â†’ Rack data)
+- Printer count table (Steam ID â†’ Printer types/counts)
 - Transmitted within 200-unit radius
 
 ### Integration with Other E2s
@@ -1151,7 +1199,7 @@ Creates an animated printer rack display showing:
 - **Printing Simulation:** Adds $700-720 every 3 seconds
 - **Temperature System:** 
   - Randomly rises during printing
-  - Cools when reaching 100°C
+  - Cools when reaching 100Â°C
   - Color changes based on temperature
 - **Storage System:**
   - Capacity bar (0-$300k)
@@ -1165,7 +1213,7 @@ Creates an animated printer rack display showing:
 - Cycles through RGB color spectrum
 - Applies to 8 entities (E1-E8)
 - Smooth hue transitions using HSV color space
-- Base hue shifts with sin wave: 260 + sin(time × 5) × 180
+- Base hue shifts with sin wave: 260 + sin(time Ã— 5) Ã— 180
 - Updates every 0.1 seconds
 - Creates flowing rainbow effect
 
@@ -1339,7 +1387,7 @@ On spawn, the E2 automatically:
 When no alarm is active:
 - **Smooth Animation:** Props cycle through grayscale colors
 - **Color Range:** Black (0) to light gray (200)
-- **Wave Effect:** Uses sine wave calculation: `100 + sin(time × 5) × 100`
+- **Wave Effect:** Uses sine wave calculation: `100 + sin(time Ã— 5) Ã— 100`
 - **Update Rate:** Refreshes every 0.1 seconds (10 times per second)
 - **Visual Effect:** Creates a subtle "breathing" or "pulsing" effect
 - **Alpha:** Full opacity (255)
@@ -1451,7 +1499,7 @@ Props with certain materials are automatically excluded:
 - **Scan Range:** 2000 units (one-time on spawn)
 
 #### Color Calculation
-Normal mode uses: `GrayValue = 100 + sin(curtime() × 5) × 100`
+Normal mode uses: `GrayValue = 100 + sin(curtime() Ã— 5) Ã— 100`
 - Base: 100 (middle gray)
 - Amplitude: 100 (range of oscillation)
 - Frequency: 5 (speed of cycle)
@@ -1565,7 +1613,7 @@ Purchase a permanent membership tier upgrade from the membership screen in the l
 - Diamond tier has FULL insurance (100%)
 - Owner pays insurance claims after raids
 
-### ⚠️ WARNING
+### âš ï¸ WARNING
 **Always deposit racks WITH printers inside, or they will be destroyed! Empty racks are not accepted.**
 
 ---
