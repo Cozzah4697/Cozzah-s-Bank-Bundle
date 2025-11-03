@@ -284,7 +284,6 @@ Cozzah's Bank System is a comprehensive Garry's Mod DarkRP banking solution feat
 - `*ruby [player]` - Grant Ruby tier (admin-only VIP tier)
 - `*remove [player]` - Remove player's permanent membership (full refund issued)
 - `*members` - List all members with both permanent and temporary tiers
-- `*broadcast` - Force immediate data sync to all bank E2s
 - `*membership [player]` - Show detailed tier breakdown for specific player:
   - Permanent tier
   - Temporary tier  
