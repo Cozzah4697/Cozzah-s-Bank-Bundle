@@ -1,5 +1,8 @@
 # Cozzah's Bank System - Complete Feature List
 
+## Overview
+Cozzah's Bank System is a comprehensive Garry's Mod DarkRP banking solution featuring tiered memberships, automated tax collection, raid detection with visual/audio alarms, insurance payouts, deposit tracking, and guard management systems.
+
 ## Core E2 Chips
 
 ### 1. Bank Security E2 (`cozzah's_bank_security_v1.2.txt`)
@@ -59,7 +62,7 @@
   - **SAFE (Green):** No threats detected, all clear
   - **ALLOWED (Orange):** Authorized customer in restricted area (with keypad access)
   - **RAID (Red/Flashing):** Unauthorized player detected, alarm active
-- **Visual feedback:** Box color changes with status (green → orange → red/flashing)
+- **Visual feedback:** Box color changes with status (green â†’ orange â†’ red/flashing)
 - **Large text display:** Status clearly visible from distance
 
 #### Alarm System:
@@ -146,13 +149,14 @@
 - Tracks individual tax totals for every rack in bank
 
 #### Tax Rates by Tier:
-| Tier | Tax Rate | Insurance |
-|------|----------|-----------|
-| Copper (Default) | 35% | 0% |
-| Silver | 25% | 50% |
-| Gold | 20% | 75% |
-| Diamond | 10% | 100% |
-| Security Guards | 0% | N/A |
+| Tier | Tax Rate | Insurance | Cost |
+|------|----------|-----------|------|
+| Copper (Default) | 35% | 0% | Free |
+| Silver | 25% | 50% | $1,000,000 |
+| Gold | 20% | 75% | $2,000,000 |
+| Diamond | 10% | 100% | $5,000,000 |
+| Ruby (Admin Only) | 0% | 100% | Free (Admin Granted) |
+| Security Guards | 0% | N/A | Job-based |
 
 #### Administration:
 - Bank closing notification system with countdown
@@ -224,8 +228,9 @@
 ### 3. Membership E2 (`cozzah's_bank_membership_e2.txt`)
 
 #### Main Features:
-- Permanent membership tier system (survives server restarts)
-- **Temporary membership system** (admin-granted, time-limited)
+- **Dual membership system:** Permanent and Temporary passes
+- **Permanent:** One-time purchase that never expires (survives server restarts)
+- **Temporary:** Half-price session passes (expires on disconnect)
 - File-based persistence (`banker_memberdata.txt` in JSON format)
 - 5 Membership tiers: Copper (free), Silver, Gold, Diamond, Ruby
 - Interactive EGP purchase interface with animated UI transitions
@@ -235,66 +240,59 @@
 - Automatic E2 chip registration
 
 #### Membership Tiers:
-| Tier | Tax | Insurance | Cost |
-|------|-----|-----------|------|
-| **Copper** (Default) | 35% | 0% | FREE |
-| **Silver** | 25% | 50% | $1M |
-| **Gold** | 20% | 75% | $2M |
-| **Diamond** | 10% | 100% | $5M |
-| **Ruby** | 1% | 100% | Admin-only |
+| Tier | Tax | Insurance | Permanent Cost | Temporary Cost |
+|------|-----|-----------|----------------|----------------|
+| **Copper** (Default) | 35% | 0% | FREE | N/A |
+| **Silver** | 25% | 50% | $1M | $500K |
+| **Gold** | 20% | 75% | $2M | $1M |
+| **Diamond** | 10% | 100% | $5M | $2.5M |
+| **Ruby** | 0% | 100% | Admin-only | Admin-only |
 
 #### Temporary Membership System:
-- **Admin-granted temporary tiers** (Silver, Gold, Diamond)
-- **Separate from permanent tiers** - players can have both
-- **Effective tier** = highest of permanent OR temporary
-- **Can upgrade temp to permanent** by purchasing
-- **Manual clearing** via admin command
-- **View all active temp memberships** with list command
-- **Usage:** Promotional trials, VIP weekends, testing
+- **Player-purchasable** temporary passes at 50% of permanent price
+- **Separate temp buttons** on UI below permanent membership buttons
+- **Effective tier calculation:** Uses higher of permanent OR temporary
+- **Session-based:** Temp tier expires when player disconnects
+- **Full benefits:** Same tax rate and insurance as permanent tier
+- **Upgrade path:** Can purchase permanent at any time to keep tier forever
+- **Use cases:** Trial runs, cost-effective short-term printing, testing bank benefits
 
 #### Screen Interface:
 - **Home Screen:** Bank branding, "GET YOUR MEMBERSHIP HERE" headline, large "START" button with animations
 - **Membership Selection Screen:** Shows membership cards side-by-side with:
-  - Tier name with color coding (Copper=brown, Silver=gray, Gold=yellow, Diamond=cyan, Ruby=special)
+  - Tier name with color coding (Copper=brown, Silver=gray, Gold=yellow, Diamond=cyan)
   - Tax rate and insurance percentage
-  - Cost (or "DEFAULT" for Copper)
-  - Interactive purchase buttons for both permanent AND temporary tiers
-  - "PERM PASS" labels on purchasable permanent tiers
-  - Tier icon/symbol (bar for lower tiers, diamond for top tier)
+  - Two purchase buttons per tier:
+    - **"PERM [cost]"** - Permanent membership button (top)
+    - **"TEMP [cost]"** - Temporary membership button (bottom)
+  - Tier icon/symbol (bar for Silver/Gold, diamond for Diamond tier)
 - **Anti-downgrade protection:** Shows message if player already has same/higher tier
 - **Distance monitoring:** Auto-resets if customer walks 100+ units away
 - **One user at a time:** Locks screen to current user
 
 #### Payment System:
 - 5-second payment window with popup
-- Exact payment verification ($1M, $2M, or $5M)
+- Exact payment verification (accepts both temp and perm pricing)
 - Automatic refund on invalid payments
 - Payment cancellation handled gracefully
-- One-time permanent purchase (no subscriptions)
 - Already-purchased tier prevention
 - Cash register sound on successful purchase
 - Spam protection (1-second cooldown between button clicks)
 
 #### Chat Commands (`*` prefix):
 - `*help` - Show admin help with full command list
-- `*give [player] [tier_number]` - Grant permanent tier (1=Silver, 2=Gold, 3=Diamond, 4=Ruby)
-  - Prevents downgrades
-  - Sends confirmation to both admin and player
-  - Used for: promotions, fixing issues, rewarding customers, staff benefits
-- `*granttemp [player] [tier_number]` - Grant temporary tier (1=Silver, 2=Gold, 3=Diamond)
-  - Separate from permanent tier
-  - Can be upgraded to permanent by purchasing
-  - Useful for trials and promotional periods
-- `*cleartemp` - Clear ALL temporary memberships at once
-- `*listtemp` - Show list of all active temporary memberships with player names and tiers
+- `*ruby [player]` - Grant Ruby tier (admin-only VIP tier)
+- `*remove [player]` - Remove player's permanent membership (full refund issued)
+- `*members` - List all members with both permanent and temporary tiers
+- `*broadcast` - Force immediate data sync to all bank E2s
 - `*membership [player]` - Show detailed tier breakdown for specific player:
   - Permanent tier
-  - Temporary tier
+  - Temporary tier  
   - Effective tier (whichever is higher)
 
 #### File Management:
 - Auto-created on first save in "banker_memberdata.txt"
-- Stores Steam ID → Tier Number mapping (e.g., "STEAM_0:1:12345" → 3)
+- Stores Steam ID â†’ Tier Number mapping (e.g., "STEAM_0:1:12345" â†’ 3)
 - Efficient lookup for tax calculations
 - Automatic save on membership changes
 - Load on E2 spawn/reset
@@ -312,6 +310,125 @@
 - Duplicate prevention (won't charge for tier already owned)
 - Steam ID tracking for reliable player identification
 - Offline support (tracks memberships even when players offline)
+
+---
+
+## Support Files & Libraries
+
+### Configuration File (`membership_configuration.txt`)
+
+#### Purpose:
+Centralized configuration system that defines all membership tier properties and provides helper functions used across all bank E2s.
+
+#### Key Features:
+- Single source of truth for all tier properties (tax, insurance, costs, colors)
+- Bank name configuration with 13-character auto-truncation  
+- Dual membership tier support (permanent + temporary)
+- Effective tier calculation (uses higher of perm/temp)
+- Legacy data format compatibility
+- Consistent color palette across all UIs
+
+#### Helper Functions Library:
+- `getTierConfig()` - Complete tier configuration table
+- `getTierName(Tier)` / `getTierColor(Tier)` - Name and hex color
+- `getTierColorR/G/B(Tier)` - RGB components (0-255)
+- `getTierTax(Tier)` / `getTierInsurance(Tier)` - Tax and insurance rates
+- `getTierCost(Tier)` / `getTierCostTemp(Tier)` - Permanent and temporary pricing
+- `getEffectiveTier()` / `getPermTier()` / `getTempTier()` - Player tier lookups
+- `limitBankNameLength(Name, MaxLength)` - Name truncation with ellipsis
+
+---
+
+### Utility Functions (`functions.txt`)
+
+#### Purpose:
+Shared utility library providing common operations for messaging, formatting, distance checks, and player detection.
+
+#### Core Utilities:
+- **Messaging:** `entity:msg(Text)` - Send validated chat messages
+- **Player Lookup:** `string:findPlayer()` - Find by name or Steam ID
+- **Number Formatting:** 
+  - `formatNumber(N)` - 2500000 → "2.5M"
+  - `formatNumberComma(N)` - 1000000 → "1,000,000"
+  - `formatTimeInSeconds(N)` - 90 → "1 min 30 secs"
+- **String Operations:** 
+  - `limitNameLength()` - Truncate with ellipsis
+  - `capitalizeFirst()` - Capitalize first letter
+  - `string:startsWith()` - Prefix checking
+- **Distance Monitoring:**
+  - `distanceCheck(Player, Max, Next)` - Auto-execute on distance exceeded
+  - `distanceFromEntity()` - Monitor specific entity proximity
+  - `playerInRange()` - Trigger functions on player proximity changes
+- **Entity Detection:**
+  - `findE2ByName(Name, Radius)` - Locate E2 chips by name
+  - `array:findEntity(E)` - Find entity in array
+
+---
+
+### UI Library (`ui.txt`)
+
+#### Purpose:
+Core EGP rendering system with element management, cursor detection, and the standard bank home screen template.
+
+#### Key Features:
+- Auto-ID element tracking system (`table:get()`)
+- Drawing primitives: text, circles, boxes, lines
+- Cursor interaction and click detection
+- Offscreen element cleanup (prevents memory leaks)
+- Standardized bank branding screen (`bankHomeScreen()`)
+
+#### Bank Home Screen Template:
+Creates consistent branding across all screens with:
+- Gray top section (89, 89, 89) / Dark bottom (42, 42, 42)
+- Bank name display at top
+- Membership tier cards for Silver, Gold, Diamond:
+  - Color-coded icons and text
+  - Tax/insurance rates display
+  - Dual purchase buttons: "PERM [cost]" and "TEMP [cost]"
+  - Visual tier indicators (bars for tiers, diamond shape for Diamond)
+- 512x512 pixel standard with top-left origin
+
+---
+
+### Security UI Library (`ui_security.txt`)
+
+#### Purpose:
+Specialized UI for Security E2 with guard roster display and application screen.
+
+#### Features:
+- **Guard roster screen** showing 4 guard slots:
+  - Guard names (10 char limit)
+  - Online status (gold text) / Offline status (shows Steam ID)
+  - Empty slots shown in white
+- **Application screen** displaying:
+  - Salary as "$X/10Min"
+  - "0% TAX" benefit highlight
+  - Large "APPLY NOW" button
+- **Dual-screen support:** Main roster (EGP) + Raid status (EGPRaid)
+- Auto-detects online/offline guards via Steam ID lookup
+- Decorative bank icons (gold bars, diamond)
+
+---
+
+### Animation Library (`animations.txt`)
+
+#### Purpose:
+Frame-based animation system for smooth UI element movement and rotation at 30 FPS.
+
+#### Core Functions:
+- `moveTo(Elements, Name, Dur, Target)` - Slide element to position
+- `rotateTo(Name, Dur, Angle)` - Rotate element smoothly
+- `startAnimation()` / `stopAnimation()` - Animation control
+- Independent timers per element
+- Auto-cleanup prevents animation conflicts
+
+#### Used For:
+- Deposit handle rotation (360° spin)
+- Button pulse effects
+- Screen transition slides  
+- Tier card reveals
+- Arrow bounce animations
+- Loading spinners
 
 ---
 
@@ -363,7 +480,7 @@
   - "FINISH AND EXIT" button with pulsing animation
   
 #### Instruction Screen Includes:
-- **Deposit process:** Rack requirement warning (⚠️ empty racks will be destroyed)
+- **Deposit process:** Rack requirement warning (âš ï¸ empty racks will be destroyed)
 - **Collection explanation:** Automatic payments after tax deduction
 - **Customer access details:** Keypad usage, door colours (green when nearby), 5-minute timer
 - **Storage rules:** Rack placement guidelines
@@ -435,7 +552,7 @@ Automatically identifies printer types for insurance tracking:
 
 #### Automation:
 - Simulated printing (adds $700-720 every 3 seconds)
-- Temperature simulation (rises randomly, cools at 100°C)
+- Temperature simulation (rises randomly, cools at 100Â°C)
 - Auto-collection trigger at $250k-300k threshold
 
 #### Law Enforcement System:
@@ -497,12 +614,12 @@ Automatically identifies printer types for insurance tracking:
 - Load on E2 spawn/reset
 
 ### Key Interconnections:
-- **Security ↔ Main:** Shares guard list for 0% tax
-- **Membership → Main:** Shares tier data for tax calculation
-- **Membership → Security:** Shares tier data for customer identification
-- **Membership → Deposit:** Shares tier data for display
-- **Deposit → Main:** Sends rack ownership and printer count data
-- **Security → Grayscale:** Sends alarm state for visual effects
+- **Security â†” Main:** Shares guard list for 0% tax
+- **Membership â†’ Main:** Shares tier data for tax calculation
+- **Membership â†’ Security:** Shares tier data for customer identification
+- **Membership â†’ Deposit:** Shares tier data for display
+- **Deposit â†’ Main:** Sends rack ownership and printer count data
+- **Security â†’ Grayscale:** Sends alarm state for visual effects
 
 ---
 
@@ -536,4 +653,4 @@ For issues, questions, or feature requests, please contact the developer.
 
 ---
 
-*Last Updated: 2024*
+*Last Updated: November 2025*
