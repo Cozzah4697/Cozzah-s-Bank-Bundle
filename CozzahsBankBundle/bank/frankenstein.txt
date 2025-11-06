@@ -62,7 +62,7 @@ if(first() || dupefinished()) {
         "Peace of mind comes standard with every account at " + Name + "!"
     )
 
-    timer("loop", TimeAdvert,0,function() {
+    timer("adverts", TimeAdvert,0,function() {
         let Text = Messages[randint(1, Messages:count()), string]
         concmd("say /advert {blue " + Text + "}") # Sends message to chat
     })
@@ -562,6 +562,10 @@ event chat(Player:entity, Message:string, _:number) {
             case "SETSTATE",
                 hideChat(1)
                 setState()
+            break
+            case "OFF",
+                hideChat(1)
+                stoptimer("adverts")
             break
         }
     }
