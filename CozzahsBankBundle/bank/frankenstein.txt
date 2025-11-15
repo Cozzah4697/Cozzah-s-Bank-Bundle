@@ -41,8 +41,6 @@ if(first() || dupefinished()) {
         }
     })
     
-    let MinAdvert = 5 
-    let TimeAdvert = 60*MinAdvert
     let Name = "} {purple " + capitalizeFirst(BankName:lower()) + "} {blue "
     Messages = array(
         "Get paid automatically while you focus on business - banking made simple with " + Name + "!",
@@ -61,11 +59,6 @@ if(first() || dupefinished()) {
         "Smart membership system rewards loyalty and growth with " + Name + "!",
         "Peace of mind comes standard with every account at " + Name + "!"
     )
-
-    timer("adverts", TimeAdvert,0,function() {
-        let Text = Messages[randint(1, Messages:count()), string]
-        concmd("say /advert {blue " + Text + "}") # Sends message to chat
-    })
 }
 
 function number table:get(Name:string) {
@@ -559,13 +552,42 @@ event chat(Player:entity, Message:string, _:number) {
         Args:remove(1)
         
         switch(Command:sub(2)) {
+            case "HELP",
+                hideChat(1)
+                # Send header
+                owner():msg("{#FFBF00 === ADMIN COMMANDS (FRANKENSTEIN) ===}")
+                
+                # Admin commands
+                owner():msg("{#FFBF00 *help} - Shows this admin help message")
+                owner():msg("{#FFBF00 *setstate} - Manually sets mass and collisions")
+                owner():msg("{#FFBF00 *on} - Turns {green ON} auto adverts")
+                owner():msg("{#FFBF00 *off} - Turns {red OFF} auto adverts")
+                
+                # Send footer
+                owner():msg("{#FFBF00 ==================================}")
+            break
             case "SETSTATE",
                 hideChat(1)
                 setState()
             break
             case "OFF",
                 hideChat(1)
-                stoptimer("adverts")
+                if(timerExists("adverts")) {
+                    stoptimer("adverts")
+                    print("{! Adverts have been turned} {red OFF}")
+                }
+                else { print("{! Adverts are already} {red OFF}") }
+            break
+            case "ON",
+                hideChat(1)
+                if(!timerExists("adverts")) {
+                    timer("adverts", 300,0,function() {
+                        let Text = Messages[randint(1, Messages:count()), string]
+                        concmd("say /advert {blue " + Text + "}") # Sends message to chat
+                    })
+                    print("{! Adverts have been turned} {green ON}")
+                }
+                else { print("{! Adverts are already} {green ON}") }
             break
         }
     }
