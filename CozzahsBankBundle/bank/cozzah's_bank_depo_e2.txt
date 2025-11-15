@@ -288,7 +288,10 @@ function void startBasePrinterScan() {
 
 function void detectRacksInDepo(Player:entity) {
     if(!DepoMin:isValid() || !DepoMax:isValid()) {
-        owner():msg("{!yellow [" + BankName + "]} {red Depo area not configured properly}")
+        if(!timerExists("configBuffer")) {
+            timer("configBuffer",5,function() {})
+            owner():msg("{!yellow [" + BankName + "]} {red Depo area not configured properly}")
+        }
         return
     }
     
@@ -747,6 +750,8 @@ if(userInput(User) && (User == CurrentPlayer || CurrentPlayer == _NO_ENTITY)) {
             }
         break,
         case "ButtonDepo",
+            stopAnimation("Rectangle51")
+            EGP:egpRemove(Elements:get("FINDMEMBERSHIP"))
             EGP:entity():soundPlay(0,2,"tau/notifications/5.mp3")
             instructionsScreen(Elements,EGP) 
         break,
