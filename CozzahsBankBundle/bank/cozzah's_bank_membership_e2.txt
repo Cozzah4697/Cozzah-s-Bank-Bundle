@@ -30,7 +30,7 @@ if(first() || dupefinished() || ~EGP) {
     E2Chips = array()
     
     # Load member data from file
-    timer("loadMemberData",1, function() {
+    timer("loadMemberData",2, function() {
         startMemberDataLoading()
     })
     
@@ -220,7 +220,8 @@ function void displayAdminHelp() {
     
     # Admin commands
     owner():msg("{#FFBF00 *help} - Shows this admin help message")
-    owner():msg("{#FFBF00 *give 'player' 'tier'} - Gives permanent membership (1=Silver, 2=Gold, 3=Diamond)")
+    owner():msg("{#FFBF00 *give 'player' 'tier'} - Gives permanent membership (1=Silver, 2=Gold, 3=Diamond, 4=Ruby)")
+    owner():msg("{#FFBF00 *remove 'player'} - Removes ALL memberships from player (resets to Copper)")
     owner():msg("{#FFBF00 *granttemp 'player' 'tier'} - Gives temporary membership (1=Silver, 2=Gold, 3=Diamond)")
     owner():msg("{#FFBF00 *cleartemp} - Clears ALL temporary memberships")
     owner():msg("{#FFBF00 *listtemp} - Shows list of all temporary memberships")
@@ -322,6 +323,53 @@ function void cmdAdmin(Command:string, Args:array) {
                     owner():msg("{#FFBF00 ===================================}")
                 }
                 else { print("{red [" + BankName + "] } {! INVALID PLAYER }") }
+            }
+        break
+        case "REMOVE",
+            if(Args:count() >= 1) {
+                let Player = Args[1, string]:findPlayer()
+                if(Player:isValid()) {
+                    let SteamID = Player:steamID()
+                    
+                    # Check if player has any membership
+                    if(!MemberData:exists(SteamID)) {
+                        owner():msg("{!yellow [" + BankName + "]} {yellow " + Player:name() + " has no membership to remove.}")
+                    }
+                    else {
+                        # Get current tiers before removal
+                        let PermTier = getPermTier(Player)
+                        let TempTier = getTempTier(Player)
+                        let PermName = getTierName(PermTier)
+                        let TempName = getTierName(TempTier)
+                        
+                        # Remove from table
+                        MemberData:remove(SteamID)
+                        
+                        # Save to file
+                        saveMemberData()
+                        
+                        # Build removal message
+                        let RemovedTiers = ""
+                        if(PermTier > 0 && TempTier > 0) {
+                            RemovedTiers = "Permanent " + PermName + " and Temporary " + TempName
+                        }
+                        elseif(PermTier > 0) {
+                            RemovedTiers = "Permanent " + PermName
+                        }
+                        elseif(TempTier > 0) {
+                            RemovedTiers = "Temporary " + TempName
+                        }
+                        
+                        owner():msg("{!yellow [" + BankName + "]} {red Removed " + RemovedTiers + " membership from " + Player:name() + ".}")
+                        Player:msg("{!yellow [" + BankName + "]} {red Your membership has been removed by " + owner():name() + ". You are now Copper tier.}")
+                    }
+                }
+                else {
+                    owner():msg("{red [" + BankName + "]} {! INVALID PLAYER}")
+                }
+            }
+            else {
+                owner():msg("{red [" + BankName + "]} {! Usage: *remove 'player'}")
             }
         break
     }
