@@ -1,11 +1,11 @@
 @name Cozzah's Banker E2 Main
-#V1.3
+#V1.4
 @inputs [HUD]:wirelink
-@outputs [TimeLeft OverallTotalTax OverallTotalProfit]:number
+@outputs [TimeLeft OverallTotalTax OverallTotalProfit RackAvgProfitPerHour]:number
 
-@persist [MemberData Racks Guards PendingPayouts Elements]:table
+@persist [MemberData Racks Guards PendingPayouts Elements CrashRecoveryData]:table
 @persist [LastCustomerSteamID LastTierName LastTaxTotal LastProfitTotal]:string
-@persist [Snapshot TimeLeft CurrentRackID HUDX HUDY]:number
+@persist [Snapshot TimeLeft CurrentRackID HUDX HUDY ServerCrashed RackProfitStartTime]:number
 @persist [CurrentCustomer]:entity
 @persist [JOB]:array
 
@@ -34,13 +34,16 @@ if(first() || dupefinished()) {
     
     OverallTotalTax = 0
     OverallTotalProfit = 0
+    ServerCrashed = 0
     
     Elements = table()
     MemberData = table()
     Racks = table()
     Guards = table()
     PendingPayouts = table()
+    CrashRecoveryData = table()
     CurrentCustomer = _NO_ENTITY
+    RackProfitStartTime = curtime()
     JOB = array("Police Officer", "Police Chief", "SWAT", "SWAT Medic", "SWAT Sniper", "Secret Service", "CUSTOM_POLICE")
 }
 
@@ -56,6 +59,9 @@ function number getInsurancePrice(ItemName:string) {
     elseif(ItemName == "Epic") { return 375000 }
     elseif(ItemName == "Legendary") { return 450000 }
     elseif(ItemName == "Halloween") { return 375000 }
+    elseif(ItemName == "Christmas") { return 375000 }
+    elseif(ItemName == "Booster") { return 275000 }
+    elseif(ItemName == "Black Wing") { return 450000 }
     elseif(ItemName == "BitMiner Rack") { return 25000 }
     elseif(ItemName == "BitMiner Tower") { return 100000 }
     elseif(ItemName == "BitMiner Tower Pro") { return 250000 }
@@ -148,6 +154,24 @@ function void loadOverallTotals() {
     if(fileCanLoad()) {
         fileLoad("banker_overall_totals.txt")
     }
+}
+
+function void loadCrashRecoveryData() {
+    if(fileCanLoad()) {
+        fileLoad("cozzahs_bank_crash_recovery.txt")
+    } else {
+        CrashRecoveryData = table()
+        print("{! Crash recovery file not found, starting fresh}")
+    }
+}
+
+function void saveCrashRecoveryValue(SteamID:string, TotalValue:number) {
+    # Add to existing value if player already has a saved value
+    local CurrentValue = CrashRecoveryData[SteamID, number]
+    CrashRecoveryData[SteamID, number] = CurrentValue + TotalValue
+    
+    # Save to file
+    fileWrite("cozzahs_bank_crash_recovery.txt", jsonEncode(CrashRecoveryData))
 }
 
 function number checkRack(Entity:entity) {
@@ -478,7 +502,7 @@ function void payInsurance() {
     
     owner():msg("{!yellow [" + BankName + "]} {green Starting insurance payouts...}")
     
-    # Process each rack owner
+    # Process each rack owner (for current deposits)
     foreach(_:number, RackData:table = Racks) {
         if(RackData["owner", string]) {
             let SteamID = RackData["owner", string]
@@ -489,6 +513,12 @@ function void payInsurance() {
                 
                 # Calculate total insurance value
                 let InsuranceValue = calculatePlayerInsurance(SteamID)
+                
+                # Add crash recovery value ONLY if server crashed flag is set
+                if(ServerCrashed) {
+                    local CrashValue = CrashRecoveryData[SteamID, number]
+                    InsuranceValue += CrashValue
+                }
                 
                 if(InsuranceValue > 0) {
                     # Get player's insurance rate based on tier
@@ -519,13 +549,139 @@ function void payInsurance() {
         }
     }
     
+    # If in crashed mode, also process players from CrashRecoveryData who weren't in Racks
+    if(ServerCrashed) {
+        foreach(SteamID:string, CrashValue:number = CrashRecoveryData) {
+            # Only process if not already processed from Racks
+            if(!ProcessedPlayers:exists(SteamID) && CrashValue > 0) {
+                let Customer = SteamID:findPlayer()
+                
+                # Get player's insurance rate based on tier
+                let InsuranceRate = 0
+                if(Customer:isValid()) {
+                    let PlayerTier = getEffectiveTier(Customer, MemberData)
+                    InsuranceRate = getTierInsurance(PlayerTier)
+                }
+                
+                let Payout = CrashValue * InsuranceRate
+                
+                if(Customer:isValid()) {
+                    moneyGive(Customer, Payout)
+                    Customer:msg("{!yellow [" + BankName + " INSURANCE]} {green You received $" + formatNumber(Payout) + " crash recovery insurance payout}")
+                    Customer:msg("{!yellow [" + BankName + "]} {yellow Item Value: $" + formatNumber(CrashValue) + " | Insurance Rate: " + (InsuranceRate*100) + "%}")
+                    
+                    TotalPaid += Payout
+                    PlayerCount++
+                    
+                    owner():msg("{green " + Customer:name() + " (CRASH):} $" + formatNumber(Payout) + " (" + (InsuranceRate*100) + "% of $" + formatNumber(CrashValue) + ")")
+                } else {
+                    owner():msg("{yellow " + SteamID + " (OFFLINE/CRASH):} Would of received $" + formatNumber(Payout))
+                }
+                
+                ProcessedPlayers[SteamID, number] = 1
+            }
+        }
+    }
+    
     if(PlayerCount > 0) {
         owner():msg("{!yellow [" + BankName + "]} {green Paid $" + formatNumber(TotalPaid) + " to " + PlayerCount + " customers}")
         Racks = table()
+        CrashRecoveryData = table()
+        fileWrite("cozzahs_bank_crash_recovery.txt", jsonEncode(CrashRecoveryData))
+        ServerCrashed = 0
+        print("All crash recovery values cleared after insurance payout")
     }
     else {
         owner():msg("{!yellow [" + BankName + "]} {red No customers found or no insurance value}")
     }
+}
+
+# Calculate total insurance liability without paying out
+function void calculateTotalInsurance() {
+    let ProcessedPlayers = table()
+    let TotalLiability = 0
+    let TotalValue = 0
+    let PlayerCount = 0
+    
+    owner():msg("{#FFBF00 ===================================}")
+    owner():msg("{#FFBF00 TOTAL INSURANCE LIABILITY REPORT}")
+    owner():msg("{#FFBF00 ===================================}")
+    
+    # Process each rack owner (for current deposits)
+    foreach(_:number, RackData:table = Racks) {
+        if(RackData["owner", string]) {
+            let SteamID = RackData["owner", string]
+            
+            # Only process each player once
+            if(!ProcessedPlayers:exists(SteamID)) {
+                let Customer = SteamID:findPlayer()
+                
+                # Calculate total insurance value
+                let InsuranceValue = calculatePlayerInsurance(SteamID)
+                # Add crash recovery value
+                local CrashValue = CrashRecoveryData[SteamID, number]
+                InsuranceValue += CrashValue
+                
+                if(InsuranceValue > 0) {
+                    TotalValue += InsuranceValue
+                    
+                    # Get player's insurance rate based on tier
+                    let InsuranceRate = 0
+                    if(Customer:isValid()) {
+                        let PlayerTier = getEffectiveTier(Customer, MemberData)
+                        InsuranceRate = getTierInsurance(PlayerTier)
+                    }
+                    
+                    let Payout = InsuranceValue * InsuranceRate
+                    TotalLiability += Payout
+                    PlayerCount++
+                    
+                    if(Customer:isValid()) {
+                        owner():msg("{green " + Customer:name() + ":} $" + formatNumber(Payout) + " (" + (InsuranceRate*100) + "% of $" + formatNumber(InsuranceValue) + ")")
+                    } else {
+                        owner():msg("{yellow " + SteamID + " (OFFLINE):} $" + formatNumber(Payout) + " (" + (InsuranceRate*100) + "% of $" + formatNumber(InsuranceValue) + ")")
+                    }
+                }
+                
+                ProcessedPlayers[SteamID, number] = 1
+            }
+        }
+    }
+    
+    # Also process players from CrashRecoveryData who weren't in Racks
+    foreach(SteamID:string, CrashValue:number = CrashRecoveryData) {
+        # Only process if not already processed from Racks
+        if(!ProcessedPlayers:exists(SteamID) && CrashValue > 0) {
+            let Customer = SteamID:findPlayer()
+            
+            TotalValue += CrashValue
+            
+            # Get player's insurance rate based on tier
+            let InsuranceRate = 0
+            if(Customer:isValid()) {
+                let PlayerTier = getEffectiveTier(Customer, MemberData)
+                InsuranceRate = getTierInsurance(PlayerTier)
+            }
+            
+            let Payout = CrashValue * InsuranceRate
+            TotalLiability += Payout
+            PlayerCount++
+            
+            if(Customer:isValid()) {
+                owner():msg("{green " + Customer:name() + " (CRASH):} $" + formatNumber(Payout) + " (" + (InsuranceRate*100) + "% of $" + formatNumber(CrashValue) + ")")
+            } else {
+                owner():msg("{yellow " + SteamID + " (OFFLINE/CRASH):} $" + formatNumber(Payout) + " (" + (InsuranceRate*100) + "% of $" + formatNumber(CrashValue) + ")")
+            }
+            
+            ProcessedPlayers[SteamID, number] = 1
+        }
+    }
+    
+    owner():msg("{#FFBF00 ===================================}")
+    owner():msg("{#FFBF00 TOTAL CUSTOMERS: }{green " + PlayerCount + "}")
+    owner():msg("{#FFBF00 TOTAL ITEM VALUE: }{green $" + formatNumber(TotalValue) + "}")
+    owner():msg("{#FFBF00 TOTAL LIABILITY: }{green $" + formatNumber(TotalLiability) + "}")
+    owner():msg("{#FFBF00 ===================================}")
 }
 
 # Manual printer setter command (fixed for entity ID system)
@@ -591,7 +747,8 @@ function void setPlayerPrinters(Player:entity, PrinterType:string, Count:number)
         
         owner():msg("{!yellow [" + BankName + "]} {green Set " + Player:name() + "'s " + PrinterType + " count to " + Count + "}")
         Player:msg("{!yellow [" + BankName + "]} {green Your " + PrinterType + " count has been set to " + Count + " by} {yellow " + owner():name() + "}.")
-    } else {
+    }
+    else {
         # Remove all printers of this type
         let ToRemove = array()
         foreach(PrinterID:number, PrinterInfo:table = PlayerPrinters) {
@@ -605,6 +762,9 @@ function void setPlayerPrinters(Player:entity, PrinterType:string, Count:number)
         
         owner():msg("{!yellow [" + BankName + "]} {green Removed all " + PrinterType + " from " + Player:name())
     }
+    # Calculate the insurance value being added
+    local AddedValue = getInsurancePrice(PrinterType) * Count
+    saveCrashRecoveryValue(SteamID, AddedValue)
 }
 
 # sends all customers a bank closing notifications
@@ -617,11 +777,17 @@ function void close(Minutes:number, Amount:number) {
     print("Interval = " + Interval)
     
     function void sendMessage(TimeLeft:string) {
+        let MessagedPlayers = table()
         foreach(_:number, RackData:table = Racks) {
             let SteamID = RackData["owner", string]
+            
+            # Skip if we already messaged this player
+            if(MessagedPlayers:exists(SteamID)) { continue }
+            
             let Customer = SteamID:findPlayer()
             if(Customer:isValid()) {
                 Customer:msg("{! [" + BankName + " ALERT]}  " + BankName:lower() + " bank will be closing in {yellow " + TimeLeft + "}. Please pick up your printers or they will be {red destroyed}.")
+                MessagedPlayers[SteamID, number] = 1
             }
         }
     }
@@ -647,11 +813,17 @@ function void close(Minutes:number, Amount:number) {
         }
         else {
             stoptimer("closing")
+            let MessagedPlayers = table()
             foreach(_:number, RackData:table = Racks) {
                 let SteamID = RackData["owner", string]
+                
+                # Skip if we already messaged this player
+                if(MessagedPlayers:exists(SteamID)) { continue }
+                
                 let Customer = SteamID:findPlayer()
                 if(Customer:isValid()) {
                     Customer:msg("{! [" + BankName + " ALERT]} {red  " + BankName:lower() + " bank has closed. If you have not picked up your printers they will now be } {! destroyed}{red .}")
+                    MessagedPlayers[SteamID, number] = 1
                 }
             }
             print("{! [" + BankName + " ALERT]} Bank closed, you may {! destroy } remaining printers") 
@@ -737,97 +909,76 @@ function void displayTotalProfit() {
     # Separator
     owner():msg("{#FFBF00 =====================}")
     
-    # Show overall (all-time) totals
-    owner():msg("{#FFBF00 === ALL-TIME TOTALS ===}")
-    owner():msg("{#FFBF00 Overall Tax Collected: }{green $" + formatNumber(OverallTotalTax) + "}")
-    owner():msg("{#FFBF00 Overall Profit Paid Out: }{green $" + formatNumber(OverallTotalProfit) + "}")
-    owner():msg("{#FFBF00 Total Revenue: }{green $" + formatNumber(OverallTotalTax + OverallTotalProfit) + "}")
+    # Show average profit per hour (works for any time frame)
+    let ElapsedSeconds = curtime() - RackProfitStartTime
+    let ElapsedMinutes = ElapsedSeconds / 60
+    let ElapsedHours = ElapsedSeconds / 3600
+    
+    if(ElapsedSeconds > 0) {
+        let AvgPerHour = (OverallTotalProfit / ElapsedSeconds) * 3600
+        owner():msg("{#FFBF00 Average Profit/Hour: }{green $" + formatNumber(AvgPerHour) + "}")
+        
+        # Show tracking time in appropriate units
+        if(ElapsedHours >= 1) {
+            owner():msg("{#FFBF00 Tracking Time: }{green " + floor(ElapsedHours * 100) / 100 + " hours}")
+        }
+        elseif(ElapsedMinutes >= 1) {
+            owner():msg("{#FFBF00 Tracking Time: }{green " + floor(ElapsedMinutes * 10) / 10 + " minutes}")
+        }
+        else {
+            owner():msg("{#FFBF00 Tracking Time: }{green " + floor(ElapsedSeconds) + " seconds}")
+        }
+    }
     
     # Footer display
     owner():msg("{#FFBF00 =====================}")
 }
 
-# Function to send raided notification to all unique rack owners
-function void sendRaidedNotification() {
-    let NotifiedPlayers = table()
-    let PlayerCount = 0
-    
-    # Loop through all racks
-    foreach(_:number, RackData:table = Racks) {
-        if(RackData["owner", string]) {
-            let SteamID = RackData["owner", string]
-            
-            # Only notify each player once
-            if(!NotifiedPlayers:exists(SteamID)) {
-                let Customer = SteamID:findPlayer()
-                
-                if(Customer:isValid()) {
-                    Customer:msg("{!yellow [" + BankName + " ALERT]} {red The bank has been raided!} You will receive your {green insurance money} shortly.")
-                    NotifiedPlayers[SteamID, number] = 1
-                    PlayerCount++
-                }
-            }
-        }
-    }
-    
-    # Confirm to admin
-    if(PlayerCount > 0) {
-        owner():msg("{!yellow [" + BankName + "]} {green Raided notification sent to " + PlayerCount + " unique customers.}")
-    } else {
-        owner():msg("{!yellow [" + BankName + "]} {red No customers found to notify.}")
-    }
-}
-
-# Display a player's insurance information
 function void displayPlayerInsurance(Player:entity) {
-    if(!Player:isValid()) {
-        owner():msg("{!yellow [" + BankName + "]} {red Invalid player}")
-        return
-    }
-    
     let SteamID = Player:steamID()
     let TotalValue = 0
     
-    owner():msg("{#FFBF00 === " + Player:name():upper() + " INSURANCE ===}")
+    owner():msg("{#FFBF00 ================================}")
+    owner():msg("{#FFBF00 INSURANCE REPORT: }{green " + Player:name() + "}")
+    owner():msg("{#FFBF00 ================================}")
     
-    # Show printers (stored by entity ID in new system)
+    # Show printers
     if(Racks:exists("player_printers")) {
         let AllPrinters = Racks["player_printers", table]
-        
         if(AllPrinters:exists(SteamID)) {
             let PlayerPrinters = AllPrinters[SteamID, table]
             
-            owner():msg("{#FFBF00 PRINTERS:}")
-            
-            # Count printers by type first (since they're stored by entity ID)
+            # Count printers by type
             let PrinterCounts = table()
             foreach(_:number, PrinterInfo:table = PlayerPrinters) {
                 let PrinterType = PrinterInfo["type", string]
-                if(PrinterCounts:exists(PrinterType)) {
-                    PrinterCounts[PrinterType, number] = PrinterCounts[PrinterType, number] + 1
-                } else {
-                    PrinterCounts[PrinterType, number] = 1
-                }
+                let CurrentCount = PrinterCounts[PrinterType, number]
+                PrinterCounts[PrinterType, number] = CurrentCount + 1
             }
             
-            # Display counts by type with proper color coding
-            foreach(PrinterName:string, Count:number = PrinterCounts) {
-                let Price = getInsurancePrice(PrinterName)
+            # Display counts
+            owner():msg("{#FFBF00 PRINTERS:}")
+            foreach(PrinterType:string, Count:number = PrinterCounts) {
+                let Price = getInsurancePrice(PrinterType)
                 let SubTotal = Price * Count
                 TotalValue += SubTotal
                 
-                # Determine color based on printer type
-                let ColourHex = "#FFFFFF"
-                if(PrinterName:lower():find("epic")) { ColourHex = "#571f82" }
-                elseif(PrinterName:lower():find("basic")) { ColourHex = "#20bc92" }
-                elseif(PrinterName:lower():find("tier 5") | PrinterName:lower():find("tier5")) { print("T5 = " + PrinterName), ColourHex = "#ff1d1b" }
-                elseif(PrinterName:lower():find("legendary")) { ColourHex = "#e0b433" }
-                elseif(PrinterName:lower():find("advanced")) { ColourHex = "#22abe2" }
-                elseif(PrinterName:lower():find("vip+")) { ColourHex = "#7f1d6e" }
-                elseif(PrinterName:lower():find("vip")) { ColourHex = "#9f1d1d" }
-                elseif(PrinterName:lower():find("bitminer")) { ColourHex = "#D9D9D9" }
+                # Color code by tier
+                let Color = "{green "
+                if(PrinterType == "Legendary") { Color = "{#E0B433 " }
+                elseif(PrinterType == "Epic") { Color = "{#571F82 " }
+                elseif(PrinterType == "VIP+") { Color = "{#7F1D6E " }
+                elseif(PrinterType == "VIP") { Color = "{#9F1D1D " }
+                elseif(PrinterType == "Tier 5") { Color = "{#FF1D1B " }
+                elseif(PrinterType == "Basic") { Color = "{#20BC92 " }
+                elseif(PrinterType == "Advanced") { Color = "{#22ABE2 " }
+                elseif(PrinterType == "Christmas") { Color = "{#FF0000 " }
+                elseif(PrinterType == "Booster") { Color = "{#FF00BF " }
+                elseif(PrinterType == "Booster") { Color = "{#dc3545 " }
+                elseif(PrinterType == "Halloween") { Color = "{#EB6123 " }
+                elseif(PrinterType == "BitMiner Rack") { Color = "{#C8C8C8 " }
                 
-                owner():msg("  {" + ColourHex + " " + PrinterName + " x" + Count + ":} {green $" + formatNumber(SubTotal) + "}")
+                owner():msg("  " + Color + Count + "x " + PrinterType + ":} {green $" + formatNumber(SubTotal) + "}")
             }
         } else {
             owner():msg("{#FFBF00 PRINTERS:}")
@@ -854,6 +1005,15 @@ function void displayPlayerInsurance(Player:entity) {
     
     if(RackCount == 0) {
         owner():msg("  None")
+    }
+    
+    # Show crash recovery value
+    if(CrashRecoveryData:exists(SteamID)) {
+        let CrashValue = CrashRecoveryData[SteamID, number]
+        if(CrashValue > 0) {
+            TotalValue += CrashValue
+            owner():msg("{#FFBF00 CRASH RECOVERY VALUE: }{yellow $" + formatNumber(CrashValue) + "}")
+        }
     }
     
     # Calculate insurance payout
@@ -889,143 +1049,169 @@ function void displayAdminHelp() {
     
     # Admin commands
     owner():msg("{#FFBF00 *help} - Shows this admin help message")
+    owner():msg("{#FFBF00 *clearcrash} - clears crash file{! (should be done at start of every session)}")
     owner():msg("{#FFBF00 *close 'minutes' 'notifs'} - Sends closing notifications")
     owner():msg("{#FFBF00 *customers} - Shows list of all customers with tiers")
     owner():msg("{#FFBF00 *profit} - Shows total profit summary from all racks")
+    owner():msg("{#FFBF00 *reseavg} - Resets the overall rack profit per hour calculation")
     owner():msg("{#FFBF00 *wire 'player' 'amount'} - Sends money to player")
     owner():msg("{#FFBF00 *owner 'player'} - Sets player as owner of last aimed rack")
     owner():msg("{#FFBF00 *raided} - Notifies all customers that bank was raided")
     owner():msg("{#FFBF00 *insurance} - Pays insurance to ALL customers")
     owner():msg("{#FFBF00 *checkinsurance 'player'} - Shows player's insurance info")
+    owner():msg("{#FFBF00 *totalinsurance} - Shows total insurance liability without paying")
+    owner():msg("{#FFBF00 *crashed} - Enable crash recovery mode for next insurance payout")
     owner():msg("{#FFBF00 *setprinter 'player' 'type' 'count'} - Manually set printer count")
-    owner():msg("{#FFBF00 Types: Basic, Advanced, Tier 5, VIP, VIP+, Epic, Legendary, Halloween, BitMiner Rack}")
+    owner():msg("{#FFBF00 Types: Basic, Advanced, Tier 5, VIP, VIP+, Epic, Legendary, Halloween, Christmas, Booster, Black Wing, BitMiner Rack}")
     
     # Send footer
     owner():msg("{#FFBF00 ==================================}")
 }
 
 function void cmdAdmin(Command:string, Args:array) {
-    switch(Command) {
-        case "HELP",
-            displayAdminHelp()
-        break
-        case "WIRE",
-            if(Args:count() >= 2) {
-                let PlayerName = Args[1, string]
-                let Player = PlayerName:findPlayer()
-                let Amount = Args[2, string]:toNumber()
-                if(Player:isValid() && Amount > 1000) {
-                    moneyGive(Player,Amount)
-                    owner():msg("{yellow [" + BankName + " E2] } YOU HAVE SENT {green " + formatNumber(Amount) + "} TO {*" + Player:name():upper() + "}")
-                    Player:msg("{yellow [" + BankName + " E2] } {*" + limitNameLength(BankName,10) + "} HAS SENT YOU {green " + formatNumber(Amount) + "}")
-                }
-                else { print("{! Player or Amount INVALID}") }      
+    if(Command == "HELP") {
+        displayAdminHelp()
+    }
+    elseif(Command == "WIRE") {
+        if(Args:count() >= 2) {
+            let PlayerName = Args[1, string]
+            let Player = PlayerName:findPlayer()
+            let Amount = Args[2, string]:toNumber()
+            if(Player:isValid() && Amount > 1000) {
+                moneyGive(Player,Amount)
+                owner():msg("{yellow [" + BankName + " E2] } YOU HAVE SENT {green " + formatNumber(Amount) + "} TO {*" + Player:name():upper() + "}")
+                Player:msg("{yellow [" + BankName + " E2] } {*" + limitNameLength(BankName,10) + "} HAS SENT YOU {green " + formatNumber(Amount) + "}")
             }
-            else { print("{! usage} - {yellow *wire 'player' 'amount'} amount must be bigger than 100") }
-        break
-        case "OWNER",
-            if(Args:count() >= 1) {
-                let PlayerName = Args[1, string]
-                let Player = PlayerName:findPlayer()
-                if(Player:isValid()) {
-                    setRackOwner(Player)
-                } else {
-                    owner():msg("{!yellow [" + BankName + "]} {red Player not found.}")
-                }
-            } else {
-                owner():msg("{!yellow [" + BankName + "]} {red Usage: *owner 'player'}")
+            else { print("{! Player or Amount INVALID}") }      
+        }
+        else { print("{! usage} - {yellow *wire 'player' 'amount'} amount must be bigger than 100") }
+    }
+    elseif(Command == "OWNER") {
+        if(Args:count() >= 1) {
+            let PlayerName = Args[1, string]
+            let Player = PlayerName:findPlayer()
+            if(Player:isValid()) {
+                setRackOwner(Player)
             }
-        break
-        case "PROFIT",
-            displayTotalProfit()
-        break
-        case "CLOSE",
-            if(Args:count() >= 1) {
-                let Minutes = Args[1, string]:toNumber()
-                let NotifNum = Args[2, string]:toNumber()
-                close(Minutes, NotifNum)
+            else {
+                owner():msg("{!yellow [" + BankName + "]} {red Player not found.}")
             }
-        break
-        case "CUSTOMERS",
-            displayAllCustomers()
-        break
-        case "RAIDED",
-            sendRaidedNotification()
-        break
-        case "INSURANCE",
-            payInsurance()
-        break
-        case "CHECKINSURANCE",
-            if(Args:count() >= 1) {
-                let PlayerName = Args[1, string]
-                let Player = PlayerName:findPlayer()
-                if(Player:isValid()) {
-                    displayPlayerInsurance(Player)
-                } else {
-                    owner():msg("{!yellow [" + BankName + "]} {red Player not found.}")
-                }
-            } else {
-                owner():msg("{!yellow [" + BankName + "]} {red Usage: *checkinsurance 'player'}")
+        }
+        else {
+            owner():msg("{!yellow [" + BankName + "]} {red Usage: *owner 'player'}")
+        }
+    }
+    elseif(Command == "PROFIT") {
+        displayTotalProfit()
+    }
+    elseif(Command == "CLOSE") {
+        if(Args:count() >= 1) {
+            let Minutes = Args[1, string]:toNumber()
+            let NotifNum = Args[2, string]:toNumber()
+            close(Minutes, NotifNum)
+        }
+    }
+    elseif(Command == "CUSTOMERS") {
+        displayAllCustomers()
+    }
+    elseif(Command == "INSURANCE") {
+        payInsurance()
+    }
+    elseif(Command == "CRASHED") {
+        ServerCrashed = 1
+        hideChat(1)
+        print("{!yellow [" + BankName + "]} {green Server crash mode ENABLED. Next insurance payout will include crash recovery values.}")
+    }
+    elseif(Command == "CLEARCRASH") {
+        hideChat(1)
+        CrashRecoveryData = table()
+        fileWrite("cozzahs_bank_crash_recovery.txt", jsonEncode(CrashRecoveryData))
+        ServerCrashed = 0
+        print("Crash recovery data cleared manually")
+    }
+    elseif(Command == "CHECKINSURANCE") {
+        if(Args:count() >= 1) {
+            let PlayerName = Args[1, string]
+            let Player = PlayerName:findPlayer()
+            if(Player:isValid()) {
+                displayPlayerInsurance(Player)
             }
-        break
-        case "SETPRINTER",
-            if(Args:count() >= 3) {
-                let PlayerName = Args[1, string]
-                let Player = PlayerName:findPlayer()
-                let PrinterType = Args[2, string]
-                let Count = Args[3, string]:toNumber()
+            else {
+                owner():msg("{!yellow [" + BankName + "]} {red Player not found.}")
+            }
+        }
+        else {
+            owner():msg("{!yellow [" + BankName + "]} {red Usage: *checkinsurance 'player'}")
+        }
+    }
+    elseif(Command == "TOTALINSURANCE") {
+        calculateTotalInsurance()
+    }
+    elseif(Command == "SETPRINTER") {
+        if(Args:count() >= 3) {
+            let PlayerName = Args[1, string]
+            let Player = PlayerName:findPlayer()
+            let PrinterType = Args[2, string]
+            let Count = Args[3, string]:toNumber()
+            
+            if(Player:isValid()) {
+                # Validate printer type
+                let ValidTypes = array("Basic", "Advanced", "Tier 5", "VIP", "VIP+", "Epic", "Legendary", "Halloween", "Booster", "Black Wing")
+                let IsValid = 0
                 
-                if(Player:isValid()) {
-                    # Validate printer type
-                    let ValidTypes = array("Basic", "Advanced", "Tier 5", "VIP", "VIP+", "Epic", "Legendary", "Halloween")
-                    let IsValid = 0
-                    
-                    for(I = 1, ValidTypes:count()) {
-                        if(ValidTypes[I, string]:upper() == PrinterType:upper()) {
-                            PrinterType = ValidTypes[I, string]
-                            IsValid = 1
-                            break
-                        }
-                    }
-                    
-                    if(IsValid) {
-                        setPlayerPrinters(Player, PrinterType, Count)
-                    } else {
-                        owner():msg("{!yellow [" + BankName + "]} {red Invalid printer type. Valid types: Basic, Advanced, Tier 5, VIP, VIP+, Epic, Legendary, Halloween}")
-                    }
-                } else {
-                    owner():msg("{!yellow [" + BankName + "]} {red Player not found.}")
-                }
-            } else {
-                owner():msg("{!yellow [" + BankName + "]} {red Usage: *setprinter 'player' 'type' 'count'}")
-            }
-        break
-        case "COPS",
-            let Amount = 50000
-            if(Amount) {
-                let Count = 0
-                findIncludeClass("player")
-                findInSphere(entity():pos(),1000)
-                let Players = findToTable()
-                foreach(_:number, Player:entity = Players) {
-                    let Job = Player:team():teamName()
-                    let IsLawEnforcement = 0
-                    for(I = 1, JOB:count()) {
-                        if(JOB[I, string] == Job) {
-                            IsLawEnforcement = 1
-                            break
-                        }
-                    }
-                    if(IsLawEnforcement) {
-                        moneyGive(Player,Amount)
-                        Player:msg("{!yellow [" + BankName + "]} You received ${green " + Amount + "} for {blue defending} {yellow " + BankName:lower() + "}.")
-                        Count++
+                for(I = 1, ValidTypes:count()) {
+                    if(ValidTypes[I, string]:upper() == PrinterType:upper()) {
+                        PrinterType = ValidTypes[I, string]
+                        IsValid = 1
+                        break
                     }
                 }
-                print("{!yellow [" + BankName + "]} You paid $" + Amount + " to " + Count + " law enforcement players")
+                
+                if(IsValid) {
+                    setPlayerPrinters(Player, PrinterType, Count)
+                }
+                else {
+                    owner():msg("{!yellow [" + BankName + "]} {red Invalid printer type. Valid types: Basic, Advanced, Tier 5, VIP, VIP+, Epic, Legendary, Halloween, Booster, Black Wing}")
+                }
             }
-            else{ print("{! INVALID INPUT}") }
-        break
+            else {
+                owner():msg("{!yellow [" + BankName + "]} {red Player not found.}")
+            }
+        }
+        else {
+            owner():msg("{!yellow [" + BankName + "]} {red Usage: *setprinter 'player' 'type' 'count'}")
+        }
+    }
+    elseif(Command == "COPS") {
+        let Amount = 50000
+        if(Amount) {
+            let Count = 0
+            findIncludeClass("player")
+            findInSphere(entity():pos(),1000)
+            let Players = findToTable()
+            foreach(_:number, Player:entity = Players) {
+                let Job = Player:team():teamName()
+                let IsLawEnforcement = 0
+                for(I = 1, JOB:count()) {
+                    if(JOB[I, string] == Job) {
+                        IsLawEnforcement = 1
+                        break
+                    }
+                }
+                if(IsLawEnforcement) {
+                    moneyGive(Player,Amount)
+                    Player:msg("{!yellow [" + BankName + "]} You received ${green " + Amount + "} for {blue defending} {yellow " + BankName:lower() + "}.")
+                    Count++
+                }
+            }
+            print("{!yellow [" + BankName + "]} You paid $" + Amount + " to " + Count + " law enforcement players")
+        }
+        else{ print("{! INVALID INPUT}") }
+    }
+    elseif(Command == "RESEAVG") {
+        # Reset rack profit tracking
+        RackProfitStartTime = curtime()
+        owner():msg("{!yellow [" + BankName + "]} {green Rack profit average has been reset. Starting fresh from now.}")
     }
 }
 
@@ -1056,7 +1242,24 @@ if(first() || dupefinished()) {
         }
     })
     
+    # Update average profit per hour every 5 mins (works for any time elapsed)
+    timer("updateAvgProfit", 300, 0, function() {
+        let ElapsedSeconds = curtime() - RackProfitStartTime
+        
+        # Convert to per-hour rate even if only seconds/minutes have passed
+        if(ElapsedSeconds > 0) {
+            # Calculate: (profit per second) * (seconds in an hour)
+            RackAvgProfitPerHour = (OverallTotalProfit / ElapsedSeconds) * 3600
+        }
+        else {
+            RackAvgProfitPerHour = 0
+        }
+    })
+    
     loadOverallTotals()
+    loadCrashRecoveryData()
+    hint("USE *CLEARCRASH to clear crash file at the start of every session",10)
+    owner():msg("{orange [WARNING]} {!  USE} {yellow *CLEARCRASH} {! to clear crash file at the start of every session}")
 }
 
 event remote(Sender:entity, Player:entity, Payload:table) {    
@@ -1104,14 +1307,33 @@ event remote(Sender:entity, Player:entity, Payload:table) {
                     Racks["player_printers", table][SteamID, table] = table()
                 }
                 
-                # Add only NEW printer entities (by ID)
+                # Add only NEW printer entities (by ID) and calculate crash recovery value
                 let ExistingPrinters = Racks["player_printers", table][SteamID, table]
+                local TotalInsuranceValue = 0
+                
                 foreach(PrinterID:number, PrinterInfo:table = PrinterList) {
                     if(!ExistingPrinters:exists(PrinterID)) {
                         ExistingPrinters[PrinterID, table] = PrinterInfo
+                        # Add to crash recovery value
+                        local PrinterType = PrinterInfo["type", string]
+                        TotalInsuranceValue += getInsurancePrice(PrinterType)
                     }
                 }
-}
+                
+                # Also add rack values for this player's racks
+                foreach(_:number, RackData:table = RacksData) {
+                    if(RackData["owner", string] == SteamID) {
+                        local RackType = RackData["rack_type", string]
+                        TotalInsuranceValue += getInsurancePrice(RackType)
+                    }
+                }
+                
+                # Save crash recovery value if any items were deposited
+                if(TotalInsuranceValue > 0) {
+                    saveCrashRecoveryValue(SteamID, TotalInsuranceValue)
+                }
+            }
+            
             
             if(NewRackCount > 0) {
                 print("{cyan [Depo]} Received " + NewRackCount + " rack assignments and printer data from Depo E2")
@@ -1140,10 +1362,28 @@ event fileLoaded(File:string, Data:string) {
                 OverallTotalProfit = LoadedData["overall_profit", number]
                 owner():msg("{!yellow [" + BankName + "]} {green Loaded overall totals: Tax $" + formatNumber(OverallTotalTax) + ", Profit $" + formatNumber(OverallTotalProfit) + "}")
             }
-        } else {
+        }
+        else {
             print("No overall totals file found, starting fresh")
             OverallTotalTax = 0
             OverallTotalProfit = 0
         }
     }
+    elseif(File == "cozzahs_bank_crash_recovery.txt") {
+        if(Data != "") {
+            local LoadedData = jsonDecode(Data)
+            if(LoadedData) {
+                CrashRecoveryData = LoadedData
+                print("Loaded crash recovery data for " + CrashRecoveryData:count() + " players")
+            }
+            else {
+                CrashRecoveryData = table()
+            }
+        }
+        else {
+            CrashRecoveryData = table()
+        }
+    }
 }
+
+
