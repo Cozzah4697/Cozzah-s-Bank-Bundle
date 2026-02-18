@@ -51,8 +51,11 @@ function string getPrinterName(Ent:entity) {
     elseif(Class == "printer_vip") { Name = "VIP" }
     elseif(Class == "printer_vipplus" || Class == "printer_vip+") { Name = "VIP+" }
     elseif(Class == "printer_epic") { Name = "Epic" }
+    elseif(Class == "printer_christmas") { Name = "Christmas" }
+    elseif(Class == "printer_booster") { Name = "Booster" }
     elseif(Class == "printer_legendary") { Name = "Legendary" }
     elseif(Class == "printer_halloween") { Name = "Halloween" }
+    elseif(Class == "printer_blackwing") { Name = "Black Wing" }
     elseif(Class == "bitminer_rack") { Name = "BitMiner Rack" }
     
     return Name
@@ -165,7 +168,7 @@ function void buildTextScreenOutput(TotalPrinters:number, TotalRacks:number) {
         Output += "PRINTERS:\n"
         
         # Define printer order for consistent display
-        let PrinterOrder = array("Basic", "Advanced", "Tier 5", "VIP", "VIP+", "Epic", "Legendary", "Halloween")
+        let PrinterOrder = array("Basic", "Advanced", "Tier 5", "VIP", "VIP+", "Epic", "Legendary", "Halloween", "Booster", "Black Wing")
         
         foreach(_:number, PrinterName:string = PrinterOrder) {
             if(BasePrinterCount:exists(PrinterName)) {
@@ -438,6 +441,8 @@ function void updatePrinterDisplay() {
             elseif(PrinterName == "Advanced") { R = 34, G = 171, B = 226 }
             elseif(PrinterName == "VIP+") { R = 127, G = 29, B = 110 }
             elseif(PrinterName == "VIP") { R = 159, G = 29, B = 29 }
+            elseif(PrinterName == "Christmas") { R = 255, G = 0, B = 0 }
+            elseif(PrinterName == "Booster") { R = 255, G = 0, B = 191 }
             elseif(PrinterName == "Halloween") { R = 235, G = 97, B = 35 }
             elseif(PrinterName == "BitMiner Rack") { R = 200, G = 200, B = 200 }
             
@@ -590,6 +595,7 @@ if(userInput(User) && (User == CurrentPlayer || CurrentPlayer == _NO_ENTITY)) {
         case "Ellipse22",       
             if(!Active) {
                 Active = 1
+                DoorSecurity["Fade", number] = 0
                 EGP:entity():soundPlay(0,2,"buttons/lever3.wav")
                 timer(10,function() { removeOffscreenObjects(Elements, EGP) })
                 rotateTo("Ellipse22",2,180)
@@ -761,7 +767,6 @@ if(userInput(User) && (User == CurrentPlayer || CurrentPlayer == _NO_ENTITY)) {
             let ArrowY = ArrowRotation == 180 ? 277.0 + 60.0 : 277.0  # Offset by height when rotated
         
             Door["Fade", number] = 1
-            DoorSecurity["Fade", number] = 0
             owner():msg("{!yellow [" + BankName + "] } Player is depositing Printers.")
             Door:entity():soundPlay(0,2,"czero/doorstop1.wav")
             
